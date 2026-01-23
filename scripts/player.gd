@@ -11,6 +11,8 @@ var path_queue = []  # Queue of positions to move through
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 var current_direction = Vector2.DOWN  # Track current facing direction
+var last_input_direction = Vector2.ZERO  # Track previous frame's input direction
+var last_path_direction = Vector2.ZERO  # Track previous pathfinding step's direction
 
 func _ready():
 	# Create animated sprite with walking animations
@@ -834,13 +836,51 @@ func process_next_path_step():
 				path_queue.clear()
 				return
 		
-		# Calculate direction to next tile (can be cardinal or diagonal)
+		# Calculate direction to next tile
 		var raw_direction = next_tile - position
 		var dx = sign(raw_direction.x)
 		var dy = sign(raw_direction.y)
 		
-		# Update facing direction to match actual movement (preserving diagonals)
-		current_direction = Vector2(dx, dy)
+		# Calculate the tile offset for this step
+		var tile_offset = Vector2(dx, dy)
+		
+		# Detect if direction changed from last step
+		var direction_changed = (tile_offset != last_path_direction)
+		
+		var new_direction = current_direction
+		
+		# Only change facing if the direction actually changed
+		if direction_changed:
+			# Simple facing logic: face the direction of movement
+			# If moving diagonally, prefer the component that's not backwards
+			var facing_h = Vector2(dx, 0) if dx != 0 else Vector2.ZERO
+			var facing_v = Vector2(0, dy) if dy != 0 else Vector2.ZERO
+			
+			# Determine which direction to face based on movement
+			if facing_h != Vector2.ZERO and facing_v != Vector2.ZERO:
+				# Diagonal movement - pick the component that's not backwards
+				var h_is_backwards = (facing_h == -current_direction)
+				var v_is_backwards = (facing_v == -current_direction)
+				
+				if h_is_backwards and not v_is_backwards:
+					new_direction = facing_v
+				elif v_is_backwards and not h_is_backwards:
+					new_direction = facing_h
+				else:
+					# Both forward or both backward - prefer based on current facing
+					if current_direction.x != 0:
+						new_direction = facing_v
+					else:
+						new_direction = facing_h
+			elif facing_h != Vector2.ZERO:
+				# Pure horizontal movement
+				new_direction = facing_h
+			elif facing_v != Vector2.ZERO:
+				# Pure vertical movement
+				new_direction = facing_v
+		
+		current_direction = new_direction
+		last_path_direction = tile_offset
 		
 		# Set target and start moving
 		target_position = next_tile
@@ -900,18 +940,48 @@ func _physics_process(delta):
 				# Clear path queue when using keyboard
 				path_queue.clear()
 				
-				# Normalize for facing direction detection
-				var normalized_dir = input_dir.normalized()
+				# Calculate tile offset for diagonal detection
+				var tile_offset = Vector2(sign(input_dir.x), sign(input_dir.y))
 				
-				# Determine what the new facing direction would be
+				# Detect if input changed from last frame
+				var input_changed = (tile_offset != last_input_direction)
+				
 				var new_direction = current_direction
-				if abs(normalized_dir.x) > abs(normalized_dir.y):
-					new_direction = Vector2.RIGHT if input_dir.x > 0 else Vector2.LEFT
-				else:
-					new_direction = Vector2.DOWN if input_dir.y > 0 else Vector2.UP
+				
+				# Only change facing if the input actually changed
+				if input_changed:
+					# Simple facing logic: face the direction of the input
+					# If pressing multiple keys, prefer the one that's not backwards
+					var facing_h = Vector2(tile_offset.x, 0) if tile_offset.x != 0 else Vector2.ZERO
+					var facing_v = Vector2(0, tile_offset.y) if tile_offset.y != 0 else Vector2.ZERO
+					
+					# Determine which direction to face based on input
+					if facing_h != Vector2.ZERO and facing_v != Vector2.ZERO:
+						# Diagonal input - pick the component that's not backwards
+						var h_is_backwards = (facing_h == -current_direction)
+						var v_is_backwards = (facing_v == -current_direction)
+						
+						if h_is_backwards and not v_is_backwards:
+							new_direction = facing_v
+						elif v_is_backwards and not h_is_backwards:
+							new_direction = facing_h
+						else:
+							# Both forward or both backward - prefer based on current facing
+							if current_direction.x != 0:
+								new_direction = facing_v
+							else:
+								new_direction = facing_h
+					elif facing_h != Vector2.ZERO:
+						# Pure horizontal input
+						new_direction = facing_h
+					elif facing_v != Vector2.ZERO:
+						# Pure vertical input
+						new_direction = facing_v
+				
+				current_direction = new_direction
+				last_input_direction = tile_offset
 				
 				# Calculate next tile position using integer offsets
-				var tile_offset = Vector2(sign(input_dir.x), sign(input_dir.y))
 				var next_position = position + tile_offset * TILE_SIZE
 				
 				# Check if the next tile is walkable (check the tile below for feet)
@@ -944,7 +1014,7 @@ func _physics_process(delta):
 func update_animation(direction: Vector2, walking: bool):
 	var anim_name = "walk_" if walking else "idle_"
 	
-	# Determine animation based on direction (including diagonals)
+	# Cardinal directions only
 	if direction == Vector2.UP:
 		anim_name += "up"
 	elif direction == Vector2.DOWN:
@@ -953,20 +1023,6 @@ func update_animation(direction: Vector2, walking: bool):
 		anim_name += "left"
 	elif direction == Vector2.RIGHT:
 		anim_name += "right"
-	elif direction == Vector2(1, -1):  # Up-right
-		anim_name += "up"
-	elif direction == Vector2(1, 1):  # Down-right
-		anim_name += "down"
-	elif direction == Vector2(-1, -1):  # Up-left
-		anim_name += "up"
-	elif direction == Vector2(-1, 1):  # Down-left
-		anim_name += "down"
-	else:
-		# Fallback to cardinal based on primary axis
-		if abs(direction.x) > abs(direction.y):
-			anim_name += "right" if direction.x > 0 else "left"
-		else:
-			anim_name += "down" if direction.y > 0 else "up"
 	
 	if animated_sprite.animation != anim_name:
 		animated_sprite.play(anim_name)
