@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3 uid="uid://c7q9m2p1b3r8d"]
+
+[ext_resource type="Script" path="res://scripts/orc.gd" id="1_orc"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_orc"]
+radius = 12.0
+
+[node name="Orc" type="CharacterBody2D"]
+script = ExtResource("1_orc")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_orc")

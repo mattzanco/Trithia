@@ -13,6 +13,7 @@ var path_queue = []  # Queue of positions to move through
 var current_direction = Vector2.DOWN  # Track current facing direction
 var last_input_direction = Vector2.ZERO  # Track previous frame's input direction
 var last_path_direction = Vector2.ZERO  # Track previous pathfinding step's direction
+var orc_reference: Node = null  # Cache orc reference
 
 func _ready():
 	# Create animated sprite with walking animations
@@ -24,6 +25,15 @@ func _ready():
 	
 	# Start with idle animation
 	animated_sprite.play("idle_down")
+
+func _process(_delta):
+	# Look for orc reference if we don't have it yet
+	if orc_reference == null:
+		var parent = get_parent()
+		if parent:
+			orc_reference = parent.find_child("Orc", true, false)
+			if orc_reference:
+				print("[PLAYER] Orc reference found in _process: ", orc_reference.name)
 
 func create_player_animations():
 	var sprite_frames = SpriteFrames.new()
@@ -112,10 +122,6 @@ func draw_character_front(img: Image, skin: Color, hair: Color, leather: Color, 
 	for y in range(16, 19):
 		img.set_pixel(12, y, outline)  # Left eye
 		img.set_pixel(19, y, outline)  # Right eye
-	
-	# Mouth (row 21)
-	for x in range(14, 18):
-		img.set_pixel(x, 21, outline)
 	
 	# Neck (rows 24-27)
 	for y in range(24, 28):
@@ -391,6 +397,479 @@ func draw_character_back(img: Image, skin: Color, hair: Color, leather: Color, l
 		if y >= 0 and y < 64:
 			img.set_pixel(22, y, outline)  # 11 → 22
 
+func create_orc_frame(direction: Vector2, frame: int) -> ImageTexture:
+	# Create a 32x64 pixel orc character (similar to player but green-skinned and no armor)
+	var img = Image.create(32, 64, false, Image.FORMAT_RGBA8)
+	
+	# Define colors for orc
+	var green_skin = Color(0.4, 0.7, 0.4)  # Green skin
+	var dark_green = Color(0.2, 0.5, 0.2)  # Darker green for details
+	var hair = Color(0.3, 0.2, 0.1)  # Brown hair
+	var muscle_shadow = Color(0.25, 0.55, 0.25)  # Shadow for muscles
+	var pants = Color(0.5, 0.4, 0.3)  # Leather loincloth/simple pants
+	var outline = Color(0.1, 0.1, 0.1)  # Dark outline
+	var metal = Color(0.7, 0.7, 0.75)  # Weapon blade
+	var handle = Color(0.4, 0.3, 0.2)  # Weapon handle
+	
+	# Draw orc based on direction
+	if direction == Vector2.UP:
+		draw_orc_back(img, green_skin, dark_green, hair, muscle_shadow, pants, outline, metal, handle, frame)
+	elif direction == Vector2.DOWN:
+		draw_orc_front(img, green_skin, dark_green, hair, muscle_shadow, pants, outline, metal, handle, frame)
+	elif direction == Vector2.LEFT:
+		draw_orc_side(img, green_skin, dark_green, hair, muscle_shadow, pants, outline, metal, handle, frame, true)
+	elif direction == Vector2.RIGHT:
+		draw_orc_side(img, green_skin, dark_green, hair, muscle_shadow, pants, outline, metal, handle, frame, false)
+	
+	# Create texture from image
+	var texture = ImageTexture.create_from_image(img)
+	return texture
+
+func draw_orc_front(img: Image, skin: Color, dark_skin: Color, hair: Color, muscle: Color, pants: Color, outline: Color, metal: Color, handle: Color, walk_frame: int):
+	# Front-facing orc (32x64 - 2 tiles tall)
+	# Similar to player but no helmet, more muscular, and green
+	
+	# Head (rows 12-23)
+	for y in range(12, 24):
+		for x in range(9, 23):
+			img.set_pixel(x, y, skin)
+		img.set_pixel(9, y, outline)
+		img.set_pixel(22, y, outline)
+	
+	# Eyes (rows 16-18)
+	for y in range(16, 19):
+		img.set_pixel(12, y, outline)  # Left eye
+		img.set_pixel(19, y, outline)  # Right eye
+	
+	# Tusks - simple vertical lines for orc character (rows 18-22)
+	img.set_pixel(10, 19, outline)  # Left tusk
+	img.set_pixel(10, 20, outline)
+	img.set_pixel(21, 19, outline)  # Right tusk
+	img.set_pixel(21, 20, outline)
+	
+	# Neck (rows 24-27)
+	for y in range(24, 28):
+		for x in range(11, 21):
+			img.set_pixel(x, y, skin)
+		img.set_pixel(11, y, outline)
+		img.set_pixel(20, y, outline)
+	
+	# Bare muscular body (rows 28-40)
+	for y in range(28, 41):
+		for x in range(7, 25):
+			img.set_pixel(x, y, skin)
+		img.set_pixel(7, y, outline)
+		img.set_pixel(24, y, outline)
+	
+	# Muscle definition (vertical straps)
+	for y in range(28, 41):
+		for x in range(14, 18):
+			img.set_pixel(x, y, muscle)
+	# Horizontal muscle lines
+	for x in range(10, 22):
+		img.set_pixel(x, 32, muscle)
+		img.set_pixel(x, 36, muscle)
+	
+	# Arms with animation
+	var left_arm_offset = 0
+	var right_arm_offset = 0
+	if walk_frame == 0:
+		left_arm_offset = 0
+		right_arm_offset = 0
+	elif walk_frame == 1:
+		left_arm_offset = -3
+		right_arm_offset = 3
+	elif walk_frame == 2:
+		left_arm_offset = 0
+		right_arm_offset = 0
+	elif walk_frame == 3:
+		left_arm_offset = 3
+		right_arm_offset = -3
+	
+	# Left arm
+	for y in range(max(30, 30 + left_arm_offset), min(40, 40 + left_arm_offset)):
+		if y >= 0 and y < 64:
+			for x in range(4, 8):
+				img.set_pixel(x, y, skin)
+			img.set_pixel(4, y, outline)
+	
+	# Right arm (holding weapon)
+	for y in range(max(30, 30 + right_arm_offset), min(40, 40 + right_arm_offset)):
+		if y >= 0 and y < 64:
+			for x in range(24, 28):
+				img.set_pixel(x, y, skin)
+			img.set_pixel(27, y, outline)
+	
+	# Weapon in right hand
+	var sword_offset = right_arm_offset
+	# Handle
+	for y in range(max(38, 38 + sword_offset), min(45, 45 + sword_offset)):
+		if y >= 0 and y < 64:
+			img.set_pixel(27, y, handle)
+	# Blade
+	for y in range(max(20, 20 + sword_offset), min(38, 38 + sword_offset)):
+		if y >= 0 and y < 64:
+			img.set_pixel(27, y, metal)
+			if y < 37:
+				img.set_pixel(28, y, metal)
+	# Blade outline
+	for y in range(max(20, 20 + sword_offset), min(38, 38 + sword_offset)):
+		if y >= 0 and y < 64:
+			img.set_pixel(26, y, outline)
+			img.set_pixel(27, y, outline)
+	
+	# Simple loincloth (rows 41-46)
+	for y in range(41, 47):
+		for x in range(9, 23):
+			img.set_pixel(x, y, pants)
+		img.set_pixel(9, y, outline)
+		img.set_pixel(22, y, outline)
+	
+	# Legs with animation (rows 47-62)
+	var left_leg_offset = 0
+	var right_leg_offset = 0
+	if walk_frame == 0:
+		left_leg_offset = 0
+		right_leg_offset = 0
+	elif walk_frame == 1:
+		left_leg_offset = 3
+		right_leg_offset = -3
+	elif walk_frame == 2:
+		left_leg_offset = 0
+		right_leg_offset = 0
+	elif walk_frame == 3:
+		left_leg_offset = -3
+		right_leg_offset = 3
+	
+	# Left leg
+	for x in range(9, 16):
+		for y in range(47, 55):
+			var pixel_y = y + left_leg_offset
+			if pixel_y >= 0 and pixel_y < 64:
+				img.set_pixel(x, pixel_y, skin)
+		var foot_y = 55 + left_leg_offset
+		if foot_y >= 0 and foot_y < 64:
+			for fy in range(foot_y, min(foot_y + 4, 64)):
+				for fx in range(9, 15):
+					img.set_pixel(fx, fy, outline)
+	
+	# Right leg
+	for x in range(16, 23):
+		for y in range(47, 55):
+			var pixel_y = y + right_leg_offset
+			if pixel_y >= 0 and pixel_y < 64:
+				img.set_pixel(x, pixel_y, skin)
+		var foot_y = 55 + right_leg_offset
+		if foot_y >= 0 and foot_y < 64:
+			for fy in range(foot_y, min(foot_y + 4, 64)):
+				for fx in range(16, 23):
+					img.set_pixel(fx, fy, outline)
+	
+	# Leg outlines
+	for y in range(max(47, 47 + left_leg_offset), min(63, 63 + left_leg_offset)):
+		if y >= 0 and y < 64:
+			img.set_pixel(8, y, outline)
+	for y in range(max(47, 47 + right_leg_offset), min(63, 63 + right_leg_offset)):
+		if y >= 0 and y < 64:
+			img.set_pixel(23, y, outline)
+
+func draw_orc_back(img: Image, skin: Color, dark_skin: Color, hair: Color, muscle: Color, pants: Color, outline: Color, metal: Color, handle: Color, walk_frame: int):
+	# Back-facing orc (32x64)
+	
+	# Head - rows 12-23
+	for y in range(12, 24):
+		for x in range(9, 23):
+			img.set_pixel(x, y, skin)
+		img.set_pixel(8, y, outline)
+		img.set_pixel(23, y, outline)
+	
+	# Back of head detail
+	for y in range(14, 22):
+		img.set_pixel(16, y, dark_skin)  # Center back stripe
+	
+	# Neck - rows 24-27
+	for y in range(24, 28):
+		for x in range(11, 21):
+			img.set_pixel(x, y, skin)
+		img.set_pixel(10, y, outline)
+		img.set_pixel(21, y, outline)
+	
+	# Bare muscular body - rows 28-39
+	for y in range(28, 40):
+		for x in range(7, 25):
+			img.set_pixel(x, y, skin)
+		img.set_pixel(6, y, outline)
+		img.set_pixel(25, y, outline)
+	
+	# Muscle definition
+	for y in range(28, 40):
+		img.set_pixel(14, y, muscle)
+		img.set_pixel(17, y, muscle)
+	for x in range(7, 25):
+		img.set_pixel(x, 32, muscle)
+		img.set_pixel(x, 36, muscle)
+	
+	# Arms with animation
+	var left_arm_offset = 0
+	var right_arm_offset = 0
+	if walk_frame == 1:
+		left_arm_offset = 4
+		right_arm_offset = -4
+	elif walk_frame == 3:
+		left_arm_offset = -4
+		right_arm_offset = 4
+	
+	for y in range(max(32, 32 + left_arm_offset), min(44, 44 + left_arm_offset)):
+		if y >= 0 and y < 64:
+			img.set_pixel(6, y, skin)
+			img.set_pixel(5, y, skin)
+			img.set_pixel(4, y, outline)
+	
+	for y in range(max(32, 32 + right_arm_offset), min(44, 44 + right_arm_offset)):
+		if y >= 0 and y < 64:
+			img.set_pixel(24, y, skin)
+			img.set_pixel(25, y, skin)
+			img.set_pixel(26, y, outline)
+	
+	# Loincloth - rows 40-47
+	for y in range(40, 48):
+		for x in range(9, 23):
+			img.set_pixel(x, y, pants)
+		img.set_pixel(8, y, outline)
+		img.set_pixel(23, y, outline)
+	
+	# Legs with animation
+	var left_leg_offset = 0
+	var right_leg_offset = 0
+	if walk_frame == 1:
+		left_leg_offset = -4
+		right_leg_offset = 4
+	elif walk_frame == 3:
+		left_leg_offset = 4
+		right_leg_offset = -4
+	
+	# Left leg - rows 48-56
+	for x in range(9, 16):
+		for y in range(48, 56):
+			var pixel_y = y + left_leg_offset
+			if pixel_y >= 0 and pixel_y < 64:
+				img.set_pixel(x, pixel_y, skin)
+		var foot_y = 56 + left_leg_offset
+		if foot_y >= 0 and foot_y < 64:
+			for foot_x in range(9, 16):
+				for fy in range(foot_y, min(foot_y + 4, 64)):
+					img.set_pixel(foot_x, fy, outline)
+	
+	# Right leg - rows 48-56
+	for x in range(16, 23):
+		for y in range(48, 56):
+			var pixel_y = y + right_leg_offset
+			if pixel_y >= 0 and pixel_y < 64:
+				img.set_pixel(x, pixel_y, skin)
+		var foot_y = 56 + right_leg_offset
+		if foot_y >= 0 and foot_y < 64:
+			for foot_x in range(16, 23):
+				for fy in range(foot_y, min(foot_y + 4, 64)):
+					img.set_pixel(foot_x, fy, outline)
+	
+	# Leg outlines
+	for y in range(max(48, 48 + left_leg_offset), min(60, 60 + left_leg_offset)):
+		if y >= 0 and y < 64:
+			img.set_pixel(8, y, outline)
+	for y in range(max(48, 48 + right_leg_offset), min(60, 60 + right_leg_offset)):
+		if y >= 0 and y < 64:
+			img.set_pixel(22, y, outline)
+
+func draw_orc_side(img: Image, skin: Color, dark_skin: Color, hair: Color, muscle: Color, pants: Color, outline: Color, metal: Color, handle: Color, walk_frame: int, flip_x: bool):
+	# Side-facing orc (32x64)
+	
+	var base_x = 16  # Center of 32-pixel width
+	var dir = 1 if not flip_x else -1
+	
+	# Head - rows 12-23
+	for y in range(12, 24):
+		for dx in range(14):
+			var x = base_x + (dx - 6) * dir
+			if x >= 0 and x < 32:
+				img.set_pixel(x, y, skin)
+		var outline_x1 = base_x + 8 * dir
+		var outline_x2 = base_x - 6 * dir
+		if outline_x1 >= 0 and outline_x1 < 32:
+			img.set_pixel(outline_x1, y, outline)
+		if outline_x2 >= 0 and outline_x2 < 32:
+			img.set_pixel(outline_x2, y, outline)
+	
+	# Eye - rows 18-21
+	var eye_x = base_x + 6 * dir
+	if eye_x >= 0 and eye_x < 32:
+		for y in range(18, 22):
+			img.set_pixel(eye_x, y, outline)
+	
+	# Tusk detail (simple protrusion)
+	var tusk_x = base_x + 8 * dir
+	if tusk_x >= 0 and tusk_x < 32:
+		img.set_pixel(tusk_x, 19, outline)
+		img.set_pixel(tusk_x, 20, outline)
+	
+	# Neck - rows 24-31
+	for y in range(24, 32):
+		for dx in range(10):
+			var x = base_x + (dx - 4) * dir
+			if x >= 0 and x < 32:
+				img.set_pixel(x, y, skin)
+		var outline_x1 = base_x + 6 * dir
+		var outline_x2 = base_x - 4 * dir
+		if outline_x1 >= 0 and outline_x1 < 32:
+			img.set_pixel(outline_x1, y, outline)
+		if outline_x2 >= 0 and outline_x2 < 32:
+			img.set_pixel(outline_x2, y, outline)
+	
+	# Bare muscular body - rows 32-47
+	for y in range(32, 48):
+		for dx in range(18):
+			var x = base_x + (dx - 6) * dir
+			if x >= 0 and x < 32:
+				img.set_pixel(x, y, skin)
+		var outline_x1 = base_x + 12 * dir
+		var outline_x2 = base_x - 6 * dir
+		if outline_x1 >= 0 and outline_x1 < 32:
+			img.set_pixel(outline_x1, y, outline)
+		if outline_x2 >= 0 and outline_x2 < 32:
+			img.set_pixel(outline_x2, y, outline)
+	
+	# Muscle definition
+	for y in range(32, 48):
+		var x = base_x + 4 * dir
+		if x >= 0 and x < 32:
+			img.set_pixel(x, y, muscle)
+	for dx in range(14):
+		var x = base_x + (dx - 4) * dir
+		if x >= 0 and x < 32:
+			img.set_pixel(x, 34, muscle)
+			img.set_pixel(x, 38, muscle)
+	
+	# Front arm with animation
+	var front_arm_offset = 0
+	if walk_frame == 1:
+		front_arm_offset = -12
+	elif walk_frame == 3:
+		front_arm_offset = 12
+	
+	var arm_x = base_x + 10 * dir
+	for y in range(max(36, 36 + front_arm_offset), min(48, 48 + front_arm_offset)):
+		if y >= 0 and y < 64 and arm_x >= 0 and arm_x < 32:
+			for dx in range(4):
+				var x = arm_x + dx * dir
+				if x >= 0 and x < 32:
+					img.set_pixel(x, y, skin)
+			var outline_x = arm_x + 4 * dir
+			if outline_x >= 0 and outline_x < 32:
+				img.set_pixel(outline_x, y, outline)
+	
+	# Weapon
+	var sword_x = base_x + 14 * dir
+	var sword_offset = 0
+	if walk_frame == 1:
+		sword_offset = -5
+	elif walk_frame == 3:
+		sword_offset = 5
+	
+	# Handle
+	for y in range(max(44, 44 + sword_offset), min(50, 50 + sword_offset)):
+		if y >= 0 and y < 64 and sword_x >= 0 and sword_x < 32:
+			img.set_pixel(sword_x, y, handle)
+	
+	# Blade
+	for y in range(max(26, 26 + sword_offset), min(44, 44 + sword_offset)):
+		if y >= 0 and y < 64 and sword_x >= 0 and sword_x < 32:
+			img.set_pixel(sword_x, y, metal)
+			var blade_x2 = sword_x + dir
+			if blade_x2 >= 0 and blade_x2 < 32 and y < 43:
+				img.set_pixel(blade_x2, y, metal)
+	
+	# Blade outline
+	var blade_outline_x = sword_x - dir
+	for y in range(max(26, 26 + sword_offset), min(44, 44 + sword_offset)):
+		if y >= 0 and y < 64 and blade_outline_x >= 0 and blade_outline_x < 32:
+			img.set_pixel(blade_outline_x, y, outline)
+	
+	# Sword tip
+	var tip_y = max(0, 24 + sword_offset)
+	if tip_y >= 0 and tip_y < 64:
+		if sword_x >= 0 and sword_x < 32:
+			img.set_pixel(sword_x, tip_y, outline)
+		var tip_x2 = sword_x + dir
+		if tip_x2 >= 0 and tip_x2 < 32:
+			img.set_pixel(tip_x2, tip_y, outline)
+		var tip_outline_x = sword_x - dir
+		if tip_outline_x >= 0 and tip_outline_x < 32:
+			img.set_pixel(tip_outline_x, tip_y, outline)
+	
+	# Fill gap between tip and blade
+	var gap_y = max(0, 25 + sword_offset)
+	if gap_y >= 0 and gap_y < 64:
+		if sword_x >= 0 and sword_x < 32:
+			img.set_pixel(sword_x, gap_y, metal)
+		var gap_x2 = sword_x + dir
+		if gap_x2 >= 0 and gap_x2 < 32:
+			img.set_pixel(gap_x2, gap_y, metal)
+		var gap_outline_x = sword_x - dir
+		if gap_outline_x >= 0 and gap_outline_x < 32:
+			img.set_pixel(gap_outline_x, gap_y, outline)
+	
+	# Loincloth - rows 48-59
+	for y in range(48, 60):
+		for dx in range(14):
+			var x = base_x + (dx - 4) * dir
+			if x >= 0 and x < 32:
+				img.set_pixel(x, y, pants)
+		var outline_x1 = base_x + 10 * dir
+		var outline_x2 = base_x - 4 * dir
+		if outline_x1 >= 0 and outline_x1 < 32:
+			img.set_pixel(outline_x1, y, outline)
+		if outline_x2 >= 0 and outline_x2 < 32:
+			img.set_pixel(outline_x2, y, outline)
+	
+	# Legs with animation
+	var front_leg_offset = 0
+	var back_leg_offset = 0
+	
+	if walk_frame == 0:
+		front_leg_offset = 0
+		back_leg_offset = 0
+	elif walk_frame == 1:
+		front_leg_offset = 8
+		back_leg_offset = -8
+	elif walk_frame == 2:
+		front_leg_offset = 0
+		back_leg_offset = 0
+	elif walk_frame == 3:
+		front_leg_offset = -8
+		back_leg_offset = 8
+	
+	# Back leg
+	for y in range(60, 64):
+		var pixel_y = y + back_leg_offset
+		if pixel_y >= 0 and pixel_y < 64:
+			for dx in range(6):
+				var x = base_x + (dx - 5) * dir
+				if x >= 0 and x < 32:
+					img.set_pixel(x, pixel_y, skin)
+			var outline_x = base_x - 5 * dir
+			if outline_x >= 0 and outline_x < 32:
+				img.set_pixel(outline_x, pixel_y, outline)
+	
+	# Front leg
+	for y in range(max(55, 55 + front_leg_offset), min(64, 64 + front_leg_offset)):
+		if y >= 0 and y < 64:
+			for dx in range(7):
+				var x = base_x + (dx - 1) * dir
+				if x >= 0 and x < 32:
+					img.set_pixel(x, y, skin)
+			var outline_x = base_x + 6 * dir
+			if outline_x >= 0 and outline_x < 32:
+				img.set_pixel(outline_x, y, outline)
+
 func draw_character_side(img: Image, skin: Color, hair: Color, leather: Color, leather_dark: Color, pants: Color, outline: Color, metal: Color, handle: Color, walk_frame: int, flip_x: bool):
 	# Side-facing character (32x64 - scaled 2x horizontal, 4x vertical)
 	# walk_frame determines leg position: 0,2 = standing, 1,3 = walking
@@ -645,12 +1124,27 @@ func move_to_position(target: Vector2):
 	var clicked_tile_y = floor(target.y / TILE_SIZE)
 	var clicked_tile_center = Vector2(clicked_tile_x * TILE_SIZE + TILE_SIZE/2, clicked_tile_y * TILE_SIZE + TILE_SIZE/2)
 	
-	var world = get_parent().get_node_or_null("World")
+	print("[MOVE_TO] Clicked at world pos ", target, " (tile: ", clicked_tile_x, ",", clicked_tile_y, ") center: ", clicked_tile_center)
+	
+	var parent = get_parent()
+	if not parent:
+		print("[MOVE_TO] ERROR: No parent!")
+		return
+	
+	var world = parent.get_node_or_null("World")
 	
 	# Check if clicked tile is walkable
 	if world and world.has_method("is_walkable"):
 		if not world.is_walkable(clicked_tile_center):
+			print("[MOVE_TO] Target tile not walkable")
 			return  # Can't walk there
+	
+	# Check if position is occupied by another entity
+	if is_position_occupied(clicked_tile_center):
+		print("[COLLISION] Target tile occupied at ", clicked_tile_center, ", cannot move")
+		return  # Can't walk there, occupied
+	else:
+		print("[PATHFIND] Target tile at ", clicked_tile_center, " is free, proceeding with pathfinding")
 	
 	# Get current tile
 	var current_tile_x = floor(position.x / TILE_SIZE)
@@ -663,6 +1157,7 @@ func move_to_position(target: Vector2):
 	
 	# If clicking on current tile, do nothing (don't change facing)
 	if current_tile_center == target_tile_center:
+		print("[MOVE_TO] Already at target tile")
 		return
 	
 	# Find path using A* pathfinding
@@ -672,23 +1167,40 @@ func move_to_position(target: Vector2):
 		# Remove first position (current position)
 		path.remove_at(0)
 		path_queue = path
+		print("[MOVE_TO] Path found with ", path.size(), " waypoints")
 		# Start moving to first waypoint
 		process_next_path_step()
 	elif path.size() == 1 and current_tile_center == target_tile_center:
 		# Already at destination
+		print("[MOVE_TO] Already at destination")
 		return
 	elif path.size() == 0:
 		# No path found - try direct movement if adjacent
 		var dist = current_tile_center.distance_to(target_tile_center)
 		if dist <= TILE_SIZE * 1.5:  # Adjacent tile (including diagonal)
+			print("[MOVE_TO] Direct movement to adjacent tile")
 			path_queue = [target_tile_center]
 			process_next_path_step()
+		else:
+			print("[MOVE_TO] No path found and target not adjacent")
+	else:
+		print("[MOVE_TO] Unexpected path size: ", path.size())
 
 func find_path(start: Vector2, goal: Vector2) -> Array:
-	var world = get_parent().get_node_or_null("World")
+	var parent = get_parent()
+	if not parent:
+		print("[PATHFIND] ERROR: No parent!")
+		return []
+	
+	var world = parent.get_node_or_null("World")
 	
 	# If no world or clicked on current tile, return empty path
-	if not world or start == goal:
+	if not world:
+		print("[PATHFIND] ERROR: No world found!")
+		return []
+	
+	if start == goal:
+		print("[PATHFIND] Start equals goal, returning empty path")
 		return []
 	
 	# Check if goal is walkable (apply feet offset)
@@ -699,6 +1211,7 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 		var goal_tile_y = floor(goal_feet.y / TILE_SIZE)
 		var goal_tile_center = Vector2(goal_tile_x * TILE_SIZE + TILE_SIZE/2, goal_tile_y * TILE_SIZE + TILE_SIZE/2)
 		if not world.is_walkable(goal_tile_center):
+			print("[PATHFIND] Goal is not walkable")
 			return []
 	
 	# A* pathfinding
@@ -742,8 +1255,9 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 			# Skip if already fully evaluated
 			if neighbor in closed_set:
 				continue
+			
 			# Skip if not walkable (apply feet offset)
-			if world.has_method("is_walkable"):
+			if world and world.has_method("is_walkable"):
 				var feet_offset = Vector2(0, TILE_SIZE / 2)
 				var feet_position = neighbor + feet_offset
 				var tile_x = floor(feet_position.x / TILE_SIZE)
@@ -752,6 +1266,10 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 				
 				if not world.is_walkable(tile_center):
 					continue
+			
+			# Skip if occupied by entity (check collision radius)
+			if is_position_occupied(neighbor):
+				continue
 			
 			# Calculate tentative g_score
 			var tentative_g = g_score.get(current, INF) + current.distance_to(neighbor)
@@ -823,7 +1341,13 @@ func process_next_path_step():
 		path_queue.remove_at(0)
 		
 		# Verify tile is still walkable before moving (with feet offset)
-		var world = get_parent().get_node_or_null("World")
+		var parent = get_parent()
+		if not parent:
+			print("[PATHSTEP] ERROR: No parent!")
+			path_queue.clear()
+			return
+		
+		var world = parent.get_node_or_null("World")
 		if world and world.has_method("is_walkable"):
 			var feet_offset = Vector2(0, TILE_SIZE / 2)
 			var feet_position = next_tile + feet_offset
@@ -833,8 +1357,18 @@ func process_next_path_step():
 			
 			if not world.is_walkable(tile_center):
 				# Path is blocked, clear queue and stop
+				print("[PATHSTEP] Next tile is no longer walkable")
 				path_queue.clear()
 				return
+		
+		# Check if the next position is occupied by another entity
+		if is_position_occupied(next_tile):
+			var tile_x = floor(next_tile.x / TILE_SIZE)
+			var tile_y = floor(next_tile.y / TILE_SIZE)
+			print("[PATHSTEP] Path blocked by entity at tile (", tile_x, ",", tile_y, ")")
+			# Path is blocked by an entity, clear queue and stop
+			path_queue.clear()
+			return
 		
 		# Calculate direction to next tile
 		var raw_direction = next_tile - position
@@ -898,6 +1432,9 @@ func _physics_process(delta):
 		if distance < MOVE_SPEED * delta:
 			# Snap to target when close enough
 			position = target_position
+			var tile_x = floor(position.x / TILE_SIZE)
+			var tile_y = floor(position.y / TILE_SIZE)
+			print("[MOVE_COMPLETE] Snapped to tile (", tile_x, ",", tile_y, ") at pos ", position)
 			is_moving = false
 			# Process next step in path
 			process_next_path_step()
@@ -905,7 +1442,7 @@ func _physics_process(delta):
 			if not is_moving:
 				update_animation(current_direction, false)
 		else:
-			# Move smoothly
+			# Move smoothly towards target
 			position += direction * MOVE_SPEED * delta
 	else:
 		# Check for keyboard input when not moving
@@ -1002,6 +1539,13 @@ func _physics_process(delta):
 					# For diagonal movement, also check that at least one adjacent tile is walkable
 					# This prevents cutting corners through walls/water
 				
+				# Also check for entity collision
+				if can_move and is_position_occupied(next_position):
+					var tile_x = floor(next_position.x / TILE_SIZE)
+					var tile_y = floor(next_position.y / TILE_SIZE)
+					print("[KEYBOARD_MOVE] Blocked by entity at tile (", tile_x, ",", tile_y, ")")
+					can_move = false
+				
 				if can_move:
 					# Only update facing direction when movement is confirmed
 					current_direction = new_direction
@@ -1026,3 +1570,24 @@ func update_animation(direction: Vector2, walking: bool):
 	
 	if animated_sprite.animation != anim_name:
 		animated_sprite.play(anim_name)
+
+func is_position_occupied(target_position: Vector2) -> bool:
+	# Check if any entity occupies this position
+	# Use the cached orc reference
+	if orc_reference == null:
+		# Try to find it again
+		var parent = get_parent()
+		if parent:
+			orc_reference = parent.find_child("Orc", true, false)
+	
+	if orc_reference != null:
+		var distance = target_position.distance_to(orc_reference.position)
+		# Prevent occupying same tile - use stricter collision
+		var is_colliding = distance < TILE_SIZE
+		print("[COLLISION CHECK] Target: ", target_position, " vs Orc: ", orc_reference.position, " Distance: ", distance, " Threshold: ", TILE_SIZE, " BLOCKED: ", is_colliding)
+		return is_colliding
+	else:
+		print("[COLLISION] WARNING: Orc reference still not found!")
+		return false
+	
+	return false
