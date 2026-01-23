@@ -10,6 +10,11 @@ var generated_chunks = {}  # Dictionary to track which chunks have been generate
 var terrain_data = {}  # Dictionary to store terrain type at each tile position
 var noise: FastNoiseLite
 var last_drawn_count = 0
+var time_passed = 0.0  # For water animation
+
+# Water animation parameters
+var water_wave_speed = 3.0  # Speed of the wave
+var water_wave_amplitude = 2.0  # How far the water moves (pixels)
 
 # Terrain textures for detailed rendering
 var terrain_textures = {}
@@ -59,6 +64,10 @@ func _process(_delta):
 	if terrain_data.size() != last_drawn_count:
 		last_drawn_count = terrain_data.size()
 		queue_redraw()
+	
+	# Accumulate time for water animation
+	time_passed += _delta
+	queue_redraw()  # Continuously redraw for animation
 
 func update_world(player_position: Vector2):
 	# Calculate which chunk the player is in
@@ -109,7 +118,22 @@ func _draw():
 		var terrain_type = terrain_data[tile_pos]
 		var tile_x = int(tile_pos.x - TILE_SIZE/2)
 		var tile_y = int(tile_pos.y - TILE_SIZE/2)
-		var tile_rect = Rect2(tile_x, tile_y, TILE_SIZE, TILE_SIZE)
+		
+		# Apply wave animation to water tiles
+		var tile_width = TILE_SIZE
+		var tile_height = TILE_SIZE
+		
+		if terrain_type == "water":
+			# Create wave effect using sine function
+			var wave_offset = sin(time_passed * water_wave_speed + tile_pos.x * 0.01 + tile_pos.y * 0.01) * water_wave_amplitude
+			tile_y += int(wave_offset)
+			# Make water tiles slightly larger to cover gaps during animation
+			tile_width = TILE_SIZE + 2
+			tile_height = TILE_SIZE + 2
+			tile_x -= 1  # Offset to maintain centering with extra size
+			tile_y -= 1
+		
+		var tile_rect = Rect2(tile_x, tile_y, tile_width, tile_height)
 		
 		# Try to use texture if available, otherwise use color
 		if terrain_type in terrain_textures and terrain_textures[terrain_type] != null:
