@@ -1421,6 +1421,23 @@ func process_next_path_step():
 		is_moving = true
 
 func _physics_process(delta):
+	# Check for keyboard input first - if any keyboard input, cancel pathfinding
+	var input_dir = Vector2.ZERO
+	
+	# Support diagonal movement with keyboard
+	if Input.is_action_pressed("move_right"):
+		input_dir.x += 1
+	if Input.is_action_pressed("move_left"):
+		input_dir.x -= 1
+	if Input.is_action_pressed("move_down"):
+		input_dir.y += 1
+	if Input.is_action_pressed("move_up"):
+		input_dir.y -= 1
+	
+	# If keyboard input detected, cancel click-to-move pathfinding
+	if input_dir != Vector2.ZERO:
+		path_queue.clear()
+	
 	if is_moving:
 		# Smoothly move towards target position
 		var direction = (target_position - position).normalized()
@@ -1446,17 +1463,7 @@ func _physics_process(delta):
 			position += direction * MOVE_SPEED * delta
 	else:
 		# Check for keyboard input when not moving
-		var input_dir = Vector2.ZERO
-		
-		# Support diagonal movement with keyboard
-		if Input.is_action_pressed("move_right"):
-			input_dir.x += 1
-		if Input.is_action_pressed("move_left"):
-			input_dir.x -= 1
-		if Input.is_action_pressed("move_down"):
-			input_dir.y += 1
-		if Input.is_action_pressed("move_up"):
-			input_dir.y -= 1
+		# input_dir already calculated above
 		
 		if input_dir != Vector2.ZERO:
 			# Check if Control is held - just change facing without moving
@@ -1474,9 +1481,6 @@ func _physics_process(delta):
 				update_animation(current_direction, false)
 			else:
 				# Normal movement
-				# Clear path queue when using keyboard
-				path_queue.clear()
-				
 				# Calculate tile offset for diagonal detection
 				var tile_offset = Vector2(sign(input_dir.x), sign(input_dir.y))
 				
