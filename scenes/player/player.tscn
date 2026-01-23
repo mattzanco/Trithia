@@ -15,3 +15,4 @@ shape = SubResource("CircleShape2D_player")
 
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(1, 1)
+current = true
