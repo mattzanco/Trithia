@@ -46,6 +46,9 @@ func _ready():
 	# Create animated sprite with walking animations
 	create_orc_animations()
 	
+	# Position sprite offset so feet are lower in the tile
+	animated_sprite.offset = Vector2(0, 8)
+	
 	# Snap to nearest tile center
 	position = Vector2(
 		round(position.x / TILE_SIZE) * TILE_SIZE + TILE_SIZE/2,

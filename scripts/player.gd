@@ -19,6 +19,9 @@ func _ready():
 	# Create animated sprite with walking animations
 	create_player_animations()
 	
+	# Position sprite offset so feet are lower in the tile
+	animated_sprite.offset = Vector2(0, 8)
+	
 	# Start at center of tile (0,0) to align with world tiles
 	position = Vector2(TILE_SIZE / 2, TILE_SIZE / 2)
 	target_position = position
@@ -98,25 +101,29 @@ func draw_character_front(img: Image, skin: Color, hair: Color, leather: Color, 
 	# Front-facing character (32x64 - 2 tiles tall)
 	# walk_frame 0,2 = standing, 1,3 = walking with opposite legs
 	
-	# Leather helmet - rows 4-11 (shorter to match back view)
-	for x in range(10, 22):
-		for y in range(5, 12):
+	# Upper body/chest (rows 24-31) - moved down to start below the head/neck
+	for y in range(28, 36):
+		for x in range(7, 25):
 			img.set_pixel(x, y, leather)
-	for x in range(10, 22):
-		img.set_pixel(x, 4, outline)
-	for y in range(4, 12):
-		img.set_pixel(9, y, outline)
-		img.set_pixel(22, y, outline)
-	# Helmet detail
-	for x in range(11, 21):
-		img.set_pixel(x, 6, leather_dark)
+	for y in range(28, 36):
+		img.set_pixel(7, y, outline)
+		img.set_pixel(24, y, outline)
+	for x in range(7, 25):
+		img.set_pixel(x, 28, outline)
+		img.set_pixel(x, 35, outline)
 	
-	# Head (rows 12-23)
+	# Head (rows 12-23) - bald head, no helmet
 	for y in range(12, 24):
 		for x in range(9, 23):
 			img.set_pixel(x, y, skin)
-		img.set_pixel(9, y, outline)
-		img.set_pixel(22, y, outline)
+	
+	# Head outline
+	for y in range(12, 24):
+		img.set_pixel(8, y, outline)
+		img.set_pixel(23, y, outline)
+	for x in range(8, 24):
+		img.set_pixel(x, 11, outline)
+		img.set_pixel(x, 24, outline)
 	
 	# Eyes (rows 16-18)
 	for y in range(16, 19):
@@ -263,29 +270,28 @@ func draw_character_back(img: Image, skin: Color, hair: Color, leather: Color, l
 	# Back-facing character (32x64 - scaled 2x horizontal, 4x vertical)
 	# walk_frame determines leg position: 0,2 = standing, 1,3 = walking
 	
-	# Leather helmet (more visible from back) - rows 4-15
-	for x in range(9, 23):  # Match head width: 9-22 (14 pixels)
-		for y in range(5, 16):  # Start from row 5 to match other views
+	# Upper body/chest (rows 28-35) - moved down to start below the head/neck
+	for y in range(28, 36):
+		for x in range(7, 25):
 			img.set_pixel(x, y, leather)
-	# Helmet strap detail
-	for x in range(10, 22):
-		img.set_pixel(x, 8, leather_dark)
-	# Top outline
-	for x in range(8, 24):
-		img.set_pixel(x, 4, outline)
-	# Side outlines
-	img.set_pixel(8, 4, outline)
-	img.set_pixel(23, 4, outline)
-	for y in range(5, 16):  # Side outlines from row 5
+	for y in range(28, 36):
+		img.set_pixel(7, y, outline)
+		img.set_pixel(24, y, outline)
+	for x in range(7, 25):
+		img.set_pixel(x, 28, outline)
+		img.set_pixel(x, 35, outline)
+	
+	# Head/bald head (rows 12-23) - no helmet
+	for y in range(12, 24):
+		for x in range(9, 23):
+			img.set_pixel(x, y, skin)
+	# Head outline
+	for y in range(12, 24):
 		img.set_pixel(8, y, outline)
 		img.set_pixel(23, y, outline)
-	
-	# Head (back of head) - rows 16-23
-	for y in range(16, 24):  # 4-6 → 16-24
-		for x in range(9, 23):  # Fill from 9 to 22 to connect with outline
-			img.set_pixel(x, y, skin)
-		img.set_pixel(8, y, outline)  # 4 → 8
-		img.set_pixel(23, y, outline)  # Right outline
+	for x in range(8, 24):
+		img.set_pixel(x, 11, outline)
+		img.set_pixel(x, 24, outline)
 	
 	# Neck - rows 24-27
 	for y in range(24, 28):  # Extended to fill gap
@@ -407,7 +413,7 @@ func create_orc_frame(direction: Vector2, frame: int) -> ImageTexture:
 	var hair = Color(0.3, 0.2, 0.1)  # Brown hair
 	var muscle_shadow = Color(0.25, 0.55, 0.25)  # Shadow for muscles
 	var pants = Color(0.5, 0.4, 0.3)  # Leather loincloth/simple pants
-	var outline = Color(0.1, 0.1, 0.1)  # Dark outline
+	var outline = Color(0, 0, 0)  # Pure black outline
 	var metal = Color(0.7, 0.7, 0.75)  # Weapon blade
 	var handle = Color(0.4, 0.3, 0.2)  # Weapon handle
 	
@@ -435,6 +441,9 @@ func draw_orc_front(img: Image, skin: Color, dark_skin: Color, hair: Color, musc
 			img.set_pixel(x, y, skin)
 		img.set_pixel(9, y, outline)
 		img.set_pixel(22, y, outline)
+	# Top of head outline (row 11, solid and wide)
+	for x in range(7, 26):
+		img.set_pixel(x, 11, outline)
 	
 	# Eyes (rows 16-18)
 	for y in range(16, 19):
@@ -582,6 +591,9 @@ func draw_orc_back(img: Image, skin: Color, dark_skin: Color, hair: Color, muscl
 			img.set_pixel(x, y, skin)
 		img.set_pixel(8, y, outline)
 		img.set_pixel(23, y, outline)
+	# Top of head outline (row 11, solid and wide)
+	for x in range(7, 26):
+		img.set_pixel(x, 11, outline)
 	
 	# Back of head detail
 	for y in range(14, 22):
@@ -698,6 +710,11 @@ func draw_orc_side(img: Image, skin: Color, dark_skin: Color, hair: Color, muscl
 			img.set_pixel(outline_x1, y, outline)
 		if outline_x2 >= 0 and outline_x2 < 32:
 			img.set_pixel(outline_x2, y, outline)
+	# Top of head outline (row 11, solid and wide)
+	for dx in range(18):
+		var x = base_x + (dx - 8) * dir
+		if x >= 0 and x < 32:
+			img.set_pixel(x, 11, outline)
 	
 	# Eye - rows 18-21
 	var eye_x = base_x + 6 * dir
@@ -858,7 +875,13 @@ func draw_orc_side(img: Image, skin: Color, dark_skin: Color, hair: Color, muscl
 			var outline_x = base_x - 5 * dir
 			if outline_x >= 0 and outline_x < 32:
 				img.set_pixel(outline_x, pixel_y, outline)
-	
+			# Add black outline at the bottom of the foot
+			if pixel_y == 63:
+				for dx in range(6):
+					var x = base_x + (dx - 5) * dir
+					if x >= 0 and x < 32:
+						img.set_pixel(x, pixel_y, outline)
+
 	# Front leg
 	for y in range(max(55, 55 + front_leg_offset), min(64, 64 + front_leg_offset)):
 		if y >= 0 and y < 64:
@@ -869,6 +892,12 @@ func draw_orc_side(img: Image, skin: Color, dark_skin: Color, hair: Color, muscl
 			var outline_x = base_x + 6 * dir
 			if outline_x >= 0 and outline_x < 32:
 				img.set_pixel(outline_x, y, outline)
+			# Add black outline at the bottom of the foot
+			if y == 63:
+				for dx in range(7):
+					var x = base_x + (dx - 1) * dir
+					if x >= 0 and x < 32:
+						img.set_pixel(x, y, outline)
 
 func draw_character_side(img: Image, skin: Color, hair: Color, leather: Color, leather_dark: Color, pants: Color, outline: Color, metal: Color, handle: Color, walk_frame: int, flip_x: bool):
 	# Side-facing character (32x64 - scaled 2x horizontal, 4x vertical)
@@ -877,45 +906,47 @@ func draw_character_side(img: Image, skin: Color, hair: Color, leather: Color, l
 	var base_x = 16  # Center of 32-pixel width
 	var dir = 1 if not flip_x else -1
 	
-	# Leather helmet - rows 4-15 (shorter to match back)
-	for y in range(4, 16):  # Start from row 4
-		for dx in range(14):  # Match front width
-			var x = base_x + (dx - 6) * dir
+	# Upper body/chest (rows 32-39) - moved below neck to avoid overlap
+	for y in range(32, 40):
+		for dx in range(18):
+			var x = base_x + (dx - 9) * dir
 			if x >= 0 and x < 32:
 				img.set_pixel(x, y, leather)
-	# Helmet detail
-	for dx in range(10):
-		var x = base_x + (dx - 3) * dir
-		if x >= 0 and x < 32:
-			img.set_pixel(x, 7, leather_dark)
-	
-	# Hair outline - sides
-	for y in range(4, 16):  # Match helmet height
-		var x = base_x + 8 * dir
-		if x >= 0 and x < 32:
-				img.set_pixel(x, y, outline)
-		x = base_x - 6 * dir
+	for y in range(32, 40):
+		var x = base_x + 9 * dir
 		if x >= 0 and x < 32:
 			img.set_pixel(x, y, outline)
-	
-	# Top outline
-	for dx in range(16):  # Fill top completely from -6 to 8
-		var x = base_x + (dx - 7) * dir
+		x = base_x - 9 * dir
 		if x >= 0 and x < 32:
-			img.set_pixel(x, 4, outline)
+			img.set_pixel(x, y, outline)
+	for dx in range(18):
+		var x = base_x + (dx - 9) * dir
+		if x >= 0 and x < 32:
+			img.set_pixel(x, 32, outline)
+			img.set_pixel(x, 39, outline)
 	
-	# Head/Face - rows 16-23
-	for y in range(16, 24):
+	# Head (rows 12-23) - bald head, no helmet
+	for y in range(12, 24):
 		for dx in range(14):  # Match front width
 			var x = base_x + (dx - 6) * dir
 			if x >= 0 and x < 32:
 				img.set_pixel(x, y, skin)
-		var outline_x1 = base_x + 8 * dir
-		var outline_x2 = base_x - 6 * dir
-		if outline_x1 >= 0 and outline_x1 < 32:
-			img.set_pixel(outline_x1, y, outline)
-		if outline_x2 >= 0 and outline_x2 < 32:
-			img.set_pixel(outline_x2, y, outline)
+	
+	# Head outline - sides
+	for y in range(12, 24):
+		var x = base_x + 8 * dir
+		if x >= 0 and x < 32:
+			img.set_pixel(x, y, outline)
+		x = base_x - 6 * dir
+		if x >= 0 and x < 32:
+			img.set_pixel(x, y, outline)
+	
+	# Top and bottom outline
+	for dx in range(16):  # Fill top and bottom completely from -6 to 8
+		var x = base_x + (dx - 7) * dir
+		if x >= 0 and x < 32:
+			img.set_pixel(x, 11, outline)
+			img.set_pixel(x, 24, outline)
 	
 	# Eye - rows 18-21
 	var eye_x = base_x + 6 * dir
@@ -1267,8 +1298,8 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 				if not world.is_walkable(tile_center):
 					continue
 			
-			# Skip if occupied by entity (check collision radius)
-			if is_position_occupied(neighbor):
+			# Skip if occupied by entity (strict check - only exact tile)
+			if is_position_occupied_strict(neighbor):
 				continue
 			
 			# Calculate tentative g_score
@@ -1593,5 +1624,21 @@ func is_position_occupied(target_position: Vector2) -> bool:
 	else:
 		print("[COLLISION] WARNING: Orc reference still not found!")
 		return false
+	
+	return false
+
+func is_position_occupied_strict(target_position: Vector2) -> bool:
+	# Strict collision check for pathfinding - only block the exact tile
+	# This prevents pathfinding from getting stuck in a constrained search space
+	if orc_reference == null:
+		var parent = get_parent()
+		if parent:
+			orc_reference = parent.find_child("Orc", true, false)
+	
+	if orc_reference != null:
+		var distance = target_position.distance_to(orc_reference.position)
+		# Only block if very close (same tile, with small tolerance)
+		var is_colliding = distance < 5.0
+		return is_colliding
 	
 	return false
