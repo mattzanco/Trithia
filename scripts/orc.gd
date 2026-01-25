@@ -18,6 +18,10 @@ var direction_change_timer = 0.0
 var patrol_direction = Vector2.ZERO
 var player = null
 var world = null
+var chase_update_interval = 0.5  # Update chase path every 0.5 seconds
+var patrol_update_interval = 2.0  # Update patrol direction every 2 seconds
+var chase_path = []  # Path to follow when chasing
+var chase_path_index = 0  # Current index in the path
 
 # Health system
 var max_health = 50
@@ -34,6 +38,12 @@ var speed = 5
 
 # Targeting system
 var is_targeted = false
+
+# Combat system
+var targeted_enemy = null
+var attack_cooldown = 2.0  # Orc attacks slower than player
+var attack_timer = 0.0
+var detection_range = TILE_SIZE * 10  # Can detect player from 10 tiles away
 
 func _ready():
 	# Get the AnimatedSprite2D node
@@ -80,6 +90,9 @@ func _ready():
 		print("Orc animation started")
 	else:
 		print("ERROR: sprite_frames is null after create_orc_animations!")
+	
+	# Initialize targeted_enemy to the player
+	targeted_enemy = null  # Will be set when detecting player
 	
 	# Setup health and health bar
 	current_health = max_health
@@ -598,38 +611,110 @@ func _physics_process(delta):
 	# Update direction change timer
 	direction_change_timer += delta
 	
-	# Decide on next move every 2 seconds
-	if direction_change_timer >= 2.0:
+	# Handle attack cooldown
+	if attack_timer > 0.0:
+		attack_timer -= delta
+	
+	# Check if player is in detection range
+	if player != null and targeted_enemy == null:
+		var distance_to_player = position.distance_to(player.position)
+		if distance_to_player <= detection_range:
+			targeted_enemy = player
+			print("[ORC_AGGRO] Orc detected Player at distance ", distance_to_player)
+	
+	# If we have a target, try to attack if adjacent
+	if targeted_enemy != null:
+		var distance_to_target = position.distance_to(targeted_enemy.position)
+		if distance_to_target < TILE_SIZE * 1.5:
+			# Player is adjacent, perform attack
+			if attack_timer <= 0.0:
+				perform_attack()
+				attack_timer = attack_cooldown
+	
+	# Decide on next move every 2 seconds (or more frequently when chasing)
+	var update_interval = patrol_update_interval
+	if targeted_enemy != null:
+		update_interval = chase_update_interval
+	
+	if direction_change_timer >= update_interval:
 		direction_change_timer = 0.0
 		
 		# Only try to move if we're at a tile center
 		if position.distance_to(target_position) < 1.0:
-			# Pick a random adjacent tile or stay still
-			var directions = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT, Vector2.ZERO]
-			patrol_direction = directions[randi() % directions.size()]
-			
-			# Calculate next tile
-			if patrol_direction != Vector2.ZERO:
-				var next_tile = position + patrol_direction * TILE_SIZE
+			# If we have a target, use pathfinding to chase
+			if targeted_enemy != null:
+				# Calculate path to target
+				var orc_tile_center = position
+				var target_tile_center = targeted_enemy.position
 				
-				# Check if it's walkable and not occupied
-				if world != null and world.has_method("is_walkable"):
-					# The feet of the sprite are on the lower tile
-					var feet_tile = next_tile + Vector2(0, TILE_SIZE / 2)
-					if not world.is_walkable(feet_tile):
-						# Can't walk there, stay still
-						patrol_direction = Vector2.ZERO
+				chase_path = find_path(orc_tile_center, target_tile_center)
+				chase_path_index = 0
 				
-				# Check for collision with player
-				if patrol_direction != Vector2.ZERO and player != null:
-					if next_tile.distance_to(player.position) < TILE_SIZE:
-						# Would collide, stay still
-						patrol_direction = Vector2.ZERO
+				# If we have a path, start following it
+				if chase_path.size() > 1:
+					chase_path.remove_at(0)  # Remove current position
+					chase_path_index = 0
+				elif chase_path.size() == 0 and orc_tile_center.distance_to(target_tile_center) < TILE_SIZE * 1.5:
+					# Target is adjacent, move directly
+					chase_path = [target_tile_center]
+					chase_path_index = 0
+			else:
+				# No target, do random patrol
+				# Pick a random adjacent tile or stay still
+				var directions = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT, Vector2.ZERO]
+				patrol_direction = directions[randi() % directions.size()]
 				
-				# If we can move, set target
+				# Calculate next tile
 				if patrol_direction != Vector2.ZERO:
-					target_position = next_tile
+					var next_tile = position + patrol_direction * TILE_SIZE
+					
+					# Check if it's walkable and not occupied
+					if world != null and world.has_method("is_walkable"):
+						# The feet of the sprite are on the lower tile
+						var feet_tile = next_tile + Vector2(0, TILE_SIZE / 2)
+						if not world.is_walkable(feet_tile):
+							# Can't walk there, stay still
+							patrol_direction = Vector2.ZERO
+					
+					# Check for collision with player
+					if patrol_direction != Vector2.ZERO and player != null:
+						if next_tile.distance_to(player.position) < TILE_SIZE:
+							# Would collide, stay still
+							patrol_direction = Vector2.ZERO
+					
+					# If we can move, set target
+					if patrol_direction != Vector2.ZERO:
+						target_position = next_tile
+						is_moving = true
+	
+	# Handle chase path following
+	if targeted_enemy != null and chase_path.size() > 0 and chase_path_index < chase_path.size():
+		# Move to next waypoint in path
+		var next_waypoint = chase_path[chase_path_index]
+		
+		# Check if the next waypoint is occupied by the player
+		if next_waypoint.distance_to(player.position) < TILE_SIZE:
+			# Player is on that tile, can't move there
+			patrol_direction = Vector2.ZERO
+		else:
+			patrol_direction = (next_waypoint - position).normalized()
+			
+			# Move toward waypoint
+			if position.distance_to(next_waypoint) < 1.0:
+				# Reached waypoint, move to next
+				chase_path_index += 1
+				if chase_path_index < chase_path.size():
+					next_waypoint = chase_path[chase_path_index]
+					patrol_direction = (next_waypoint - position).normalized()
+					target_position = next_waypoint
 					is_moving = true
+			else:
+				target_position = next_waypoint
+				if not is_moving:
+					is_moving = true
+	elif targeted_enemy == null and patrol_direction == Vector2.ZERO:
+		# In patrol mode but no direction set - do nothing this frame
+		pass
 	
 	# Smooth movement toward target
 	if is_moving and position.distance_to(target_position) > 1.0:
@@ -682,6 +767,106 @@ func get_direction_name(dir: Vector2) -> String:
 		return "right"
 	return "down"
 
+func find_path(start: Vector2, goal: Vector2) -> Array:
+	if start == goal:
+		return []
+	
+	# Check if goal is walkable
+	if world and world.has_method("is_walkable"):
+		var feet_offset = Vector2(0, TILE_SIZE / 2)
+		var goal_feet = goal + feet_offset
+		if not world.is_walkable(goal_feet):
+			return []
+	
+	# A* pathfinding
+	var open_set = [start]
+	var came_from = {}
+	var g_score = {start: 0}
+	var f_score = {start: heuristic(start, goal)}
+	var closed_set = {}
+	var iterations = 0
+	var max_iterations = 10000
+	
+	while open_set.size() > 0 and iterations < max_iterations:
+		iterations += 1
+		# Find node with lowest f_score
+		var current = open_set[0]
+		var current_f = f_score.get(current, INF)
+		for node in open_set:
+			var node_f = f_score.get(node, INF)
+			if node_f < current_f:
+				current = node
+				current_f = node_f
+		
+		# Reached goal
+		if current == goal:
+			return reconstruct_path(came_from, current)
+		
+		open_set.erase(current)
+		closed_set[current] = true
+		
+		# Check all neighbors
+		var neighbors = get_neighbors(current)
+		for neighbor in neighbors:
+			if neighbor in closed_set:
+				continue
+			
+			# Check walkability
+			if world and world.has_method("is_walkable"):
+				var feet_offset = Vector2(0, TILE_SIZE / 2)
+				var feet_position = neighbor + feet_offset
+				if not world.is_walkable(feet_position):
+					continue
+			
+			# Check if player is occupying this tile
+			if player != null and neighbor.distance_to(player.position) < TILE_SIZE:
+				continue
+			
+			# Calculate tentative g_score
+			var tentative_g = g_score.get(current, INF) + current.distance_to(neighbor)
+			
+			if tentative_g < g_score.get(neighbor, INF):
+				came_from[neighbor] = current
+				g_score[neighbor] = tentative_g
+				f_score[neighbor] = tentative_g + heuristic(neighbor, goal)
+				
+				if not neighbor in open_set:
+					open_set.append(neighbor)
+	
+	return []
+
+func get_neighbors(tile_center: Vector2) -> Array:
+	var neighbors = []
+	var tile_x = floor(tile_center.x / TILE_SIZE)
+	var tile_y = floor(tile_center.y / TILE_SIZE)
+	
+	var directions = [
+		Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0), Vector2(0, -1),
+		Vector2(1, 1), Vector2(-1, 1), Vector2(-1, -1), Vector2(1, -1)
+	]
+	
+	for dir in directions:
+		var neighbor_x = tile_x + dir.x
+		var neighbor_y = tile_y + dir.y
+		var neighbor_center = Vector2(neighbor_x * TILE_SIZE + TILE_SIZE/2, neighbor_y * TILE_SIZE + TILE_SIZE/2)
+		neighbors.append(neighbor_center)
+	
+	return neighbors
+
+func heuristic(a: Vector2, b: Vector2) -> float:
+	var dx = abs(a.x - b.x) / TILE_SIZE
+	var dy = abs(a.y - b.y) / TILE_SIZE
+	var D = TILE_SIZE
+	var D2 = sqrt(2) * TILE_SIZE
+	return D * max(dx, dy) + (D2 - D) * min(dx, dy)
+
+func reconstruct_path(came_from: Dictionary, current: Vector2) -> Array:
+	var path = [current]
+	while current in came_from:
+		current = came_from[current]
+		path.insert(0, current)
+	return path
+
 func _draw():
 	# Draw red border around the sprite when targeted
 	if is_targeted:
@@ -694,6 +879,27 @@ func _draw():
 		draw_line(rect_offset + Vector2(TILE_SIZE, 0), rect_offset + Vector2(TILE_SIZE, TILE_SIZE), Color.RED, border_width)  # Right
 		draw_line(rect_offset + Vector2(TILE_SIZE, TILE_SIZE), rect_offset + Vector2(0, TILE_SIZE), Color.RED, border_width)  # Bottom
 		draw_line(rect_offset, rect_offset + Vector2(0, TILE_SIZE), Color.RED, border_width)  # Left
+
+func perform_attack():
+	if targeted_enemy == null:
+		return
+	
+	var damage = strength + randi_range(-2, 2)
+	var target_health = targeted_enemy.get_meta("current_health")
+	target_health -= damage
+	targeted_enemy.set_meta("current_health", target_health)
+	
+	print("[ORC_ATTACK] Orc dealt ", damage, " damage to Player. HP: ", target_health, "/", targeted_enemy.get_meta("max_health"))
+	
+	# Trigger health bar redraw
+	if targeted_enemy.has_node("HealthBar"):
+		var health_bar = targeted_enemy.get_node("HealthBar")
+		health_bar.queue_redraw()
+	
+	# Check if target died
+	if target_health <= 0:
+		targeted_enemy.die()
+		targeted_enemy = null
 
 func die():
 	# Create a dead body visual at the orc's position

@@ -1754,3 +1754,9 @@ func is_position_occupied_strict(target_position: Vector2) -> bool:
 		return is_colliding
 	
 	return false
+
+func die():
+	# Player died - this would be expanded later with death animation, respawn, etc.
+	print("[PLAYER_DIE] Player died at position ", position)
+	# For now, just remove the player
+	queue_free()
