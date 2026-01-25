@@ -20,6 +20,9 @@ var max_health = 100
 var current_health = 100
 var health_bar = null
 
+# Targeting system
+var targeted_enemy = null  # Reference to the currently targeted enemy
+
 func _ready():
 	# Create animated sprite with walking animations
 	create_player_animations()
@@ -1163,6 +1166,46 @@ func _input(event):
 			var click_position = get_global_mouse_position()
 			move_to_position(click_position)
 			get_viewport().set_input_as_handled()
+		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			var click_position = get_global_mouse_position()
+			handle_target_click(click_position)
+			get_viewport().set_input_as_handled()
+
+func handle_target_click(click_position: Vector2):
+	# Convert click position to tile center
+	var clicked_tile_x = floor(click_position.x / TILE_SIZE)
+	var clicked_tile_y = floor(click_position.y / TILE_SIZE)
+	var clicked_tile_center = Vector2(clicked_tile_x * TILE_SIZE + TILE_SIZE/2, clicked_tile_y * TILE_SIZE + TILE_SIZE/2)
+	
+	# Check if there's an enemy on this tile
+	if orc_reference == null:
+		var parent = get_parent()
+		if parent:
+			orc_reference = parent.find_child("Orc", true, false)
+	
+	if orc_reference != null:
+		# The targetable tile is the lower of the two tiles the sprite occupies
+		var orc_targetable_tile = orc_reference.position + Vector2(0, TILE_SIZE/2)
+		var orc_targetable_tile_x = floor(orc_targetable_tile.x / TILE_SIZE)
+		var orc_targetable_tile_y = floor(orc_targetable_tile.y / TILE_SIZE)
+		var orc_targetable_tile_center = Vector2(orc_targetable_tile_x * TILE_SIZE + TILE_SIZE/2, orc_targetable_tile_y * TILE_SIZE + TILE_SIZE/2)
+		
+		# If clicking on orc's targetable tile
+		if clicked_tile_center == orc_targetable_tile_center:
+			# Toggle targeting
+			if targeted_enemy == orc_reference:
+				# Untarget
+				targeted_enemy = null
+				orc_reference.is_targeted = false
+				print("[TARGET] Untargeted enemy")
+			else:
+				# Target
+				targeted_enemy = orc_reference
+				orc_reference.is_targeted = true
+				print("[TARGET] Targeted enemy at ", orc_reference.position)
+			
+			# Notify orc to redraw
+			orc_reference.queue_redraw()
 
 func move_to_position(target: Vector2):
 	# Convert click position to tile coordinates (where we want feet to land)

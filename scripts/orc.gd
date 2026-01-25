@@ -24,6 +24,9 @@ var max_health = 50
 var current_health = 50
 var health_bar = null
 
+# Targeting system
+var is_targeted = false
+
 func _ready():
 	# Get the AnimatedSprite2D node
 	animated_sprite = $AnimatedSprite2D
@@ -661,5 +664,18 @@ func get_direction_name(dir: Vector2) -> String:
 	elif dir == Vector2.RIGHT:
 		return "right"
 	return "down"
+
+func _draw():
+	# Draw red border around the sprite when targeted
+	if is_targeted:
+		# The targetable tile is the lower of the two tiles the sprite occupies
+		var border_width = 2
+		var rect_offset = Vector2(-TILE_SIZE/2, TILE_SIZE/2)  # Center horizontally, align with lower tile
+		
+		# Draw red outline around the tile containing the feet
+		draw_line(rect_offset, rect_offset + Vector2(TILE_SIZE, 0), Color.RED, border_width)  # Top
+		draw_line(rect_offset + Vector2(TILE_SIZE, 0), rect_offset + Vector2(TILE_SIZE, TILE_SIZE), Color.RED, border_width)  # Right
+		draw_line(rect_offset + Vector2(TILE_SIZE, TILE_SIZE), rect_offset + Vector2(0, TILE_SIZE), Color.RED, border_width)  # Bottom
+		draw_line(rect_offset, rect_offset + Vector2(0, TILE_SIZE), Color.RED, border_width)  # Left
 
 
