@@ -687,11 +687,27 @@ func _physics_process(delta):
 		var distance = position.distance_to(target_position)
 		
 		if distance < MOVE_SPEED * delta:
-			# Snap to target when close enough
-			position = target_position
-			is_moving = false
-			# Process next step in path
-			process_orc_next_path_step()
+			# Before snapping, check if target tile is still unoccupied
+			var target_occupied = false
+			
+			# Check if player is on the target tile
+			if player != null and target_position.distance_to(player.position) < TILE_SIZE:
+				target_occupied = true
+			
+			# Check if another orc is on the target tile
+			if not target_occupied and is_tile_occupied_by_enemy(target_position):
+				target_occupied = true
+			
+			if not target_occupied:
+				# Snap to target when close enough
+				position = target_position
+				is_moving = false
+				# Process next step in path
+				process_orc_next_path_step()
+			else:
+				# Target tile is now occupied, stop moving and pick a new direction
+				is_moving = false
+				print("[ORC_COLLISION] Target tile occupied at ", target_position, ", stopping movement")
 		else:
 			# Move smoothly towards target
 			position += direction * MOVE_SPEED * delta
@@ -774,6 +790,12 @@ func _physics_process(delta):
 					if world != null and world.has_method("is_walkable"):
 						if not world.is_walkable(snapped_center):
 							can_move = false  # Reject this fallback direction
+					# Double-check no entity is occupying this tile
+					if can_move:
+						if player != null and snapped_center.distance_to(player.position) < TILE_SIZE:
+							can_move = false
+						elif is_tile_occupied_by_enemy(snapped_center):
+							can_move = false
 					if can_move:
 						target_position = snapped_center
 						# For diagonal movement, convert to cardinal direction for animation

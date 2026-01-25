@@ -13,7 +13,6 @@ var path_queue = []  # Queue of positions to move through
 var current_direction = Vector2.DOWN  # Track current facing direction
 var last_input_direction = Vector2.ZERO  # Track previous frame's input direction
 var last_path_direction = Vector2.ZERO  # Track previous pathfinding step's direction
-var orc_reference: Node = null  # Cache orc reference
 
 # Health system
 var max_health = 100
@@ -89,14 +88,6 @@ func _process(_delta):
 		if distance_to_target < TILE_SIZE * 1.5:
 			perform_attack(targeted_enemy)
 			attack_timer = attack_cooldown
-	
-	# Look for orc reference if we don't have it yet
-	if orc_reference == null:
-		var parent = get_parent()
-		if parent:
-			orc_reference = parent.find_child("Orc", true, false)
-			if orc_reference:
-				print("[PLAYER] Orc reference found in _process: ", orc_reference.name)
 
 func create_player_animations():
 	var sprite_frames = SpriteFrames.new()
@@ -1219,35 +1210,39 @@ func handle_target_click(click_position: Vector2):
 	var clicked_tile_y = floor(click_position.y / TILE_SIZE)
 	var clicked_tile_center = Vector2(clicked_tile_x * TILE_SIZE + TILE_SIZE/2, clicked_tile_y * TILE_SIZE + TILE_SIZE/2)
 	
-	# Check if there's an enemy on this tile
-	if orc_reference == null:
-		var parent = get_parent()
-		if parent:
-			orc_reference = parent.find_child("Orc", true, false)
-	
-	if orc_reference != null:
-		# The targetable tile is the lower of the two tiles the sprite occupies
-		var orc_targetable_tile = orc_reference.position + Vector2(0, TILE_SIZE/2)
-		var orc_targetable_tile_x = floor(orc_targetable_tile.x / TILE_SIZE)
-		var orc_targetable_tile_y = floor(orc_targetable_tile.y / TILE_SIZE)
-		var orc_targetable_tile_center = Vector2(orc_targetable_tile_x * TILE_SIZE + TILE_SIZE/2, orc_targetable_tile_y * TILE_SIZE + TILE_SIZE/2)
-		
-		# If clicking on orc's targetable tile
-		if clicked_tile_center == orc_targetable_tile_center:
-			# Toggle targeting
-			if targeted_enemy == orc_reference:
-				# Untarget
-				targeted_enemy = null
-				orc_reference.is_targeted = false
-				print("[TARGET] Untargeted enemy")
-			else:
-				# Target
-				targeted_enemy = orc_reference
-				orc_reference.is_targeted = true
-				print("[TARGET] Targeted enemy at ", orc_reference.position)
-			
-			# Notify orc to redraw
-			orc_reference.queue_redraw()
+	# Check if there's an enemy on this tile by checking all orcs
+	var parent = get_parent()
+	if parent:
+		for child in parent.get_children():
+			# Check if this is an orc by looking at its script
+			if child != self and child.get_script() != null and child.get_script().resource_path == "res://scripts/orc.gd":
+				# The targetable tile is the lower of the two tiles the sprite occupies
+				var orc_targetable_tile = child.position + Vector2(0, TILE_SIZE/2)
+				var orc_targetable_tile_x = floor(orc_targetable_tile.x / TILE_SIZE)
+				var orc_targetable_tile_y = floor(orc_targetable_tile.y / TILE_SIZE)
+				var orc_targetable_tile_center = Vector2(orc_targetable_tile_x * TILE_SIZE + TILE_SIZE/2, orc_targetable_tile_y * TILE_SIZE + TILE_SIZE/2)
+				
+				# If clicking on this orc's targetable tile
+				if clicked_tile_center == orc_targetable_tile_center:
+					# Toggle targeting
+					if targeted_enemy == child:
+						# Untarget
+						targeted_enemy = null
+						child.is_targeted = false
+						print("[TARGET] Untargeted enemy")
+						child.queue_redraw()
+					else:
+						# Untarget previous enemy if any
+						if targeted_enemy != null:
+							targeted_enemy.is_targeted = false
+							targeted_enemy.queue_redraw()
+						# Target new enemy
+						targeted_enemy = child
+						child.is_targeted = true
+						print("[TARGET] Targeted enemy at ", child.position)
+						# Notify orc to redraw
+						child.queue_redraw()
+					return
 
 func perform_attack(target: Node):
 	# Calculate damage based on strength and some randomness
