@@ -88,12 +88,17 @@ func _ready():
 	print("Orc position after snapping: ", position)
 	
 	target_position = position
-	current_direction = Vector2.DOWN
 	
-	# Start with idle animation
+	# Set random facing direction
+	var directions = [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT]
+	var direction_names = ["down", "up", "left", "right"]
+	var random_index = randi() % directions.size()
+	current_direction = directions[random_index]
+	
+	# Start with idle animation for the random direction
 	if animated_sprite.sprite_frames != null:
-		animated_sprite.play("idle_down")
-		print("Orc animation started")
+		animated_sprite.play("idle_" + direction_names[random_index])
+		print("Orc animation started facing " + direction_names[random_index])
 	else:
 		print("ERROR: sprite_frames is null after create_orc_animations!")
 	
