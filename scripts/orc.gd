@@ -33,6 +33,9 @@ var last_player_tile_position = null  # Track player's tile position for smart p
 var last_tile_position = Vector2.ZERO  # Track which tile orc is currently on
 var tile_stuck_timer = 0.0  # How long orc has been on current tile
 var max_tile_stuck_time = 0.5  # Max seconds to stay on same tile (roughly 2 movement intervals)
+var stuck_cooldown = 0.0  # Cooldown after detecting stuck state
+var direction_lock_timer = 0.0  # Prevent rapid direction changes
+var last_confirmed_position = Vector2.ZERO  # Last tile center we were confirmed at
 
 # Pathfinding stagger to prevent all orcs from pathfinding in same frame
 var pathfind_stagger = 0.0  # Offset to stagger pathfinding calls
@@ -87,6 +90,9 @@ func _ready():
 	)
 	
 	target_position = position
+	
+	# Initialize last confirmed position
+	last_confirmed_position = position
 	
 	# Set random facing direction
 	var directions = [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT]
@@ -623,6 +629,32 @@ func _physics_process(delta):
 	direction_change_timer += delta
 	# chase_path_timer is no longer used - we recalculate only when player moves tiles
 	
+	# Update direction lock timer
+	if direction_lock_timer > 0.0:
+		direction_lock_timer -= delta
+	
+	# Update stuck cooldown
+	if stuck_cooldown > 0.0:
+		stuck_cooldown -= delta
+	
+	# Detect if orc is stuck on the same tile
+	var current_tile = (position / TILE_SIZE).floor()
+	if current_tile == last_tile_position:
+		tile_stuck_timer += delta
+	else:
+		tile_stuck_timer = 0.0
+		last_tile_position = current_tile
+	
+	# If stuck for too long and not in cooldown, clear path and recalculate
+	if tile_stuck_timer > max_tile_stuck_time and stuck_cooldown <= 0.0:
+		if path_queue.size() > 0 or is_moving:
+			# We're stuck - clear everything and set cooldown
+			path_queue.clear()
+			is_moving = false
+			stuck_cooldown = 2.0  # 2 second cooldown before trying again
+			last_player_tile_position = null  # Force recalculation on next opportunity
+			tile_stuck_timer = 0.0
+	
 	# Handle attack cooldown
 	if attack_timer > 0.0:
 		attack_timer -= delta
@@ -653,6 +685,15 @@ func _physics_process(delta):
 			# RULE: Never move away from the player while adjacent
 			# Clear any path that might move us away
 			path_queue.clear()
+		else:
+			# Player is NOT adjacent anymore - if we were adjacent before, cancel any movement
+			# This prevents completing a movement in the wrong direction when player steps away
+			if is_moving and path_queue.size() == 0:
+				# We were attacking but player moved away and we're still moving somewhere
+				is_moving = false
+				# Snap back to last confirmed position
+				position = last_confirmed_position
+				target_position = position
 	
 	# SMART PATHFINDING: Only recalculate when player moves to a NEW TILE
 	# This prevents unnecessary path recalculations while the player is stationary
@@ -668,9 +709,19 @@ func _physics_process(delta):
 		# Also check if we're just starting to chase (player detected)
 		var player_just_appeared = player_just_detected
 		var time_since_move = Time.get_ticks_msec() / 1000.0 - last_move_time
-		var enough_time_since_move = time_since_move > 0.2
 		
-		# Only recalculate if: player moved tiles OR player just appeared AND enough time has passed
+		# Check if player went from adjacent to non-adjacent (stepped away from combat)
+		var current_distance = position.distance_to(targeted_enemy.position)
+		var was_adjacent = (last_player_tile_position != null and 
+							position.distance_to(Vector2(last_player_tile_position.x * TILE_SIZE + TILE_SIZE/2, 
+														 last_player_tile_position.y * TILE_SIZE + TILE_SIZE/2)) < TILE_SIZE * 2.0)
+		var is_now_far = current_distance >= TILE_SIZE * 1.5
+		var player_stepped_away = was_adjacent and is_now_far
+		
+		# Allow immediate recalc if player stepped away from combat, otherwise require cooldown
+		var enough_time_since_move = time_since_move > 0.2 or player_stepped_away
+		
+		# Recalculate when player moves to any new tile (responsive following)
 		if (player_moved_tiles or player_just_appeared) and enough_time_since_move:
 			# Update the tracked player tile position
 			last_player_tile_position = current_player_tile
@@ -694,10 +745,9 @@ func _physics_process(delta):
 				# Calculate new path to player's current position
 				var new_path = find_path(start_tile_center, target_tile_center)
 				
-				# Replace path_queue with new path (even if empty - indicates no path available)
-				path_queue.clear()  # Clear any previous path
+				# Use the fresh path directly - no preservation of old waypoints
+				# This ensures orcs always take the most direct route
 				path_queue = new_path
-				# A* already filtered water during pathfinding
 				
 				# Remove the starting position if it's in the path and we're already on it
 				if path_queue.size() > 0 and path_queue[0].distance_to(position) < TILE_SIZE * 0.1:
@@ -750,8 +800,21 @@ func _physics_process(delta):
 				target_valid = false
 			
 			if target_valid:
+				# FINAL CHECK: Re-verify occupancy right before snapping (race condition prevention)
+				if is_tile_occupied_by_enemy(target_position):
+					# Another orc moved here in the same frame - abort and recalculate
+					is_moving = false
+					# Snap back to last confirmed position
+					position = last_confirmed_position
+					target_position = position
+					path_queue.clear()
+					return
+				
 				# Snap to target when close enough
 				position = target_position
+				
+				# Update last confirmed position now that we've successfully moved
+				last_confirmed_position = position
 				
 				# ABSOLUTE RULE: Verify current position is walkable after snap (both center and feet)
 				if world != null and world.has_method("is_walkable"):
@@ -916,11 +979,13 @@ func process_next_path_step():
 		var tile_offset = Vector2(dx, dy)
 		
 		# Only update direction if it actually changed from the last step
-		if tile_offset != last_path_direction:
+		# AND if enough time has passed since last direction change (prevent flashing)
+		if tile_offset != last_path_direction and direction_lock_timer <= 0.0:
 			# Direction changed - calculate new facing
 			var new_direction = calculate_direction(int(dx), int(dy))
 			if new_direction != current_direction:
 				current_direction = new_direction
+				direction_lock_timer = 0.15  # Lock direction for 150ms to prevent flashing
 			last_path_direction = tile_offset
 		
 		# ABSOLUTE RULE: Check if target tile is walkable BEFORE moving
@@ -964,7 +1029,10 @@ func process_next_path_step():
 			path_queue.clear()
 			recalc_count += 1
 			if recalc_count > max_recalcs:
-				# Too many recalculations, give up and wait for next frame
+				# Too many recalculations, stop and wait for next physics frame
+				# Set stuck detection to trigger soon
+				is_moving = false
+				tile_stuck_timer = max_tile_stuck_time * 0.8
 				return
 			var start_tile_center = (position / TILE_SIZE).round() * TILE_SIZE + Vector2(TILE_SIZE * 0.5, TILE_SIZE * 0.5)
 			var target_tile_center = (player.position / TILE_SIZE).round() * TILE_SIZE + Vector2(TILE_SIZE * 0.5, TILE_SIZE * 0.5)
@@ -979,7 +1047,10 @@ func process_next_path_step():
 			path_queue.clear()
 			recalc_count += 1
 			if recalc_count > max_recalcs:
-				# Too many recalculations, give up and wait for next frame
+				# Too many recalculations, stop and wait for next physics frame
+				# Set stuck detection to trigger soon
+				is_moving = false
+				tile_stuck_timer = max_tile_stuck_time * 0.8
 				return
 			var start_tile_center = (position / TILE_SIZE).round() * TILE_SIZE + Vector2(TILE_SIZE * 0.5, TILE_SIZE * 0.5)
 			var target_tile_center = (player.position / TILE_SIZE).round() * TILE_SIZE + Vector2(TILE_SIZE * 0.5, TILE_SIZE * 0.5)
@@ -1084,9 +1155,17 @@ func maintain_surrounding_position():
 		return
 	
 	var distance_to_target = position.distance_to(targeted_enemy.position)
-	# Only maintain surrounding if NOT already adjacent
+	
+	# If already adjacent, check if we're sharing a tile with another orc
 	if distance_to_target < TILE_SIZE * 1.5:
-		return
+		# Check if current position is occupied by another orc
+		if is_tile_occupied_by_enemy(position):
+			# We're on the same tile as another orc - need to find a different adjacent spot
+			# Fall through to positioning logic below
+			pass
+		else:
+			# We're in a good position, stay here
+			return
 	
 	# Try to move to an adjacent tile around the player
 	# This ensures proper surrounding behavior
@@ -1112,6 +1191,10 @@ func maintain_surrounding_position():
 	for tile_coords in adjacent_tiles:
 		var tile_center = Vector2(tile_coords.x * TILE_SIZE + TILE_SIZE/2, tile_coords.y * TILE_SIZE + TILE_SIZE/2)
 		
+		# Skip if this is our current position (avoid redundant check)
+		if tile_center.distance_to(position) < TILE_SIZE * 0.1:
+			continue
+		
 		# Check if walkable (both center and feet)
 		if not world.is_walkable(tile_center):
 			continue
@@ -1125,7 +1208,7 @@ func maintain_surrounding_position():
 		if not world.is_walkable(feet_tile_center):
 			continue
 		
-		# Check if occupied
+		# Check if occupied by another orc or player
 		if is_tile_occupied_by_enemy(tile_center) or (player != null and tile_center.distance_to(player.position) < TILE_SIZE * 0.5):
 			continue
 		
