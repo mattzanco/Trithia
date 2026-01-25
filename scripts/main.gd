@@ -115,9 +115,9 @@ func show_game_over():
 	canvas_layer.layer = 100
 	add_child(canvas_layer)
 	
-	# Create a Label for "Game Over"
+	# Create a Label for death message
 	var game_over_label = Label.new()
-	game_over_label.text = "GAME OVER"
+	game_over_label.text = "You Have Died"
 	game_over_label.add_theme_font_size_override("font_size", 96)
 	
 	# Add the label to the canvas layer
