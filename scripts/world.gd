@@ -275,6 +275,14 @@ func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 			if not is_walkable(tile_center):
 				continue
 			
+			# EXTRA SAFEGUARD: Double-check terrain type directly isn't water
+			# This catches edge cases where is_walkable might have a bug
+			if has_method("get_terrain_at"):
+				if get_terrain_at(neighbor) == "water":
+					continue
+				if get_terrain_at(tile_center) == "water":
+					continue
+			
 			# Check if occupied by another entity (not by requester itself)
 			if is_tile_occupied_by_other(neighbor, requester):
 				continue

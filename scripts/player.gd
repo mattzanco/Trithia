@@ -1188,7 +1188,7 @@ func draw_character_side(img: Image, skin: Color, hair: Color, leather: Color, l
 func _input(event):
 	# Handle click-to-move
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed and not is_moving:
+		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 			var click_position = get_global_mouse_position()
 			move_to_position(click_position)
 			get_viewport().set_input_as_handled()
@@ -1298,6 +1298,7 @@ func move_to_position(target: Vector2):
 	if path.size() > 1:
 		# Remove first position (current position)
 		path.remove_at(0)
+		path_queue.clear()  # Clear any previous path
 		path_queue = path
 		# Start moving to first waypoint
 		process_next_path_step()
@@ -1308,6 +1309,7 @@ func move_to_position(target: Vector2):
 		# No path found - try direct movement if adjacent
 		var dist = current_tile_center.distance_to(target_tile_center)
 		if dist <= TILE_SIZE * 1.5:  # Adjacent tile (including diagonal)
+			path_queue.clear()  # Clear any previous path
 			path_queue = [target_tile_center]
 			process_next_path_step()
 
@@ -1332,6 +1334,19 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 func process_next_path_step():
 	if path_queue.size() > 0 and not is_moving:
 		var next_tile = path_queue[0]
+		
+		# SAFETY CHECK: Verify the next tile is actually adjacent to current position
+		# This prevents invalid grid-skipping movement when paths have gaps
+		var distance_to_tile = position.distance_to(next_tile)
+		var max_adjacent_distance = TILE_SIZE * 1.5  # Allows diagonal movement (sqrt(2) ≈ 1.41)
+		
+		if distance_to_tile > max_adjacent_distance:
+			# The next tile is not adjacent - path is broken!
+			print("[PATHSTEP] ERROR: Next tile is not adjacent! Distance: ", distance_to_tile, " from ", position, " to ", next_tile)
+			# Clear the entire path and stop
+			path_queue.clear()
+			return
+		
 		path_queue.remove_at(0)
 		
 		# Verify tile is still walkable before moving (with feet offset)
