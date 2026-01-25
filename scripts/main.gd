@@ -123,14 +123,10 @@ func show_game_over():
 	# Add the label to the canvas layer
 	canvas_layer.add_child(game_over_label)
 	
-	# Position the label at the center of the screen
+	# Position the label at the center of the screen using position
 	var viewport_size = get_viewport().get_visible_rect().size
-	game_over_label.anchor_left = 0.5
-	game_over_label.anchor_top = 0.5
-	game_over_label.anchor_right = 0.5
-	game_over_label.anchor_bottom = 0.5
-	game_over_label.offset.x = -game_over_label.size.x / 2
-	game_over_label.offset.y = -game_over_label.size.y / 2
+	game_over_label.position = viewport_size / 2
+	game_over_label.pivot_offset = game_over_label.size / 2
 	
 	print("[GAME_OVER] Game over screen displayed")
 

@@ -649,31 +649,34 @@ func _physics_process(delta):
 		
 		# Only try to move if we're at a tile center (or just detected)
 		if position.distance_to(target_position) < 1.0 or player_just_detected:
-			# Recalculate path if player has moved significantly or just detected
-			var player_movement = targeted_enemy.position.distance_to(last_player_position)
-			if player_movement > TILE_SIZE * 0.8 or chase_path.size() == 0 or player_just_detected:
-				# Calculate path to target - snap target to tile center first
-				var target_tile_x = round(targeted_enemy.position.x / TILE_SIZE)
-				var target_tile_y = round(targeted_enemy.position.y / TILE_SIZE)
-				var target_tile_center = Vector2(target_tile_x * TILE_SIZE + TILE_SIZE/2, target_tile_y * TILE_SIZE + TILE_SIZE/2)
-				
-				chase_path = find_path(position, target_tile_center)
-				chase_path_index = 0
-				last_player_position = targeted_enemy.position
-				
-				print("[ORC_PATHFINDING] Found path with ", chase_path.size(), " waypoints from ", position, " to ", targeted_enemy.position)
-				
-				# Don't remove the first element here - let process_orc_next_path_step handle it
-				# This prevents double-removal of waypoints
-				
-				# Skip the starting position if it's in the path
-				if chase_path.size() > 0 and chase_path[0].distance_to(position) < TILE_SIZE * 0.1:
-					chase_path.pop_front()
-					print("[ORC_PATHFINDING] Removed starting position from path, now have ", chase_path.size(), " waypoints")
-				
-				# Immediately start following the new path
-				if chase_path.size() > 0 and not is_moving:
-					process_orc_next_path_step()
+			# Skip pathfinding if player is very far away - use fallback instead
+			var distance_to_player = position.distance_to(targeted_enemy.position)
+			if distance_to_player <= TILE_SIZE * 30:
+				# Recalculate path if player has moved significantly or just detected
+				var player_movement = targeted_enemy.position.distance_to(last_player_position)
+				if player_movement > TILE_SIZE * 0.8 or chase_path.size() == 0 or player_just_detected:
+					# Calculate path to target - snap target to tile center first
+					var target_tile_x = round(targeted_enemy.position.x / TILE_SIZE)
+					var target_tile_y = round(targeted_enemy.position.y / TILE_SIZE)
+					var target_tile_center = Vector2(target_tile_x * TILE_SIZE + TILE_SIZE/2, target_tile_y * TILE_SIZE + TILE_SIZE/2)
+					
+					chase_path = find_path(position, target_tile_center)
+					chase_path_index = 0
+					last_player_position = targeted_enemy.position
+					
+					print("[ORC_PATHFINDING] Found path with ", chase_path.size(), " waypoints from ", position, " to ", targeted_enemy.position)
+					
+					# Don't remove the first element here - let process_orc_next_path_step handle it
+					# This prevents double-removal of waypoints
+					
+					# Skip the starting position if it's in the path
+					if chase_path.size() > 0 and chase_path[0].distance_to(position) < TILE_SIZE * 0.1:
+						chase_path.pop_front()
+						print("[ORC_PATHFINDING] Removed starting position from path, now have ", chase_path.size(), " waypoints")
+					
+					# Immediately start following the new path
+					if chase_path.size() > 0 and not is_moving:
+						process_orc_next_path_step()
 	
 	# Move toward target if we have one
 	if is_moving:
@@ -701,21 +704,47 @@ func _physics_process(delta):
 			if animated_sprite.animation != anim_name:
 				animated_sprite.play(anim_name)
 	else:
-		# Not moving - try to start moving to next waypoint
+		# Not moving - check if we're in attack range or try to move to next waypoint
 		if targeted_enemy != null:
+			var distance_to_target = position.distance_to(targeted_enemy.position)
+			# If adjacent to target, play idle animation (we're attacking)
+			if distance_to_target < TILE_SIZE * 1.5:
+				var dir_name = get_direction_name(current_direction)
+				if animated_sprite != null and animated_sprite.sprite_frames != null:
+					var anim_name = "idle_" + dir_name
+					if animated_sprite.animation != anim_name:
+						animated_sprite.play(anim_name)
 			# If we have no path, move directly toward the player as fallback
-			if chase_path.size() == 0:
+			elif chase_path.size() == 0:
 				var direction_to_player = (targeted_enemy.position - position).normalized()
-				# Find the closest cardinal direction
+				
+				# Find the best direction, with strong preference for current direction
 				var best_direction = Vector2.DOWN
 				var best_dot = -2.0
-				for dir in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+				
+				# Check 8 directions (4 cardinal + 4 diagonal) for better pathfinding
+				var directions_to_check = [
+					Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT,
+					Vector2.UP + Vector2.LEFT, Vector2.UP + Vector2.RIGHT,
+					Vector2.DOWN + Vector2.LEFT, Vector2.DOWN + Vector2.RIGHT
+				]
+				
+				for dir in directions_to_check:
 					var dot = direction_to_player.dot(dir)
-					if dot > best_dot:
-						best_dot = dot
+					# Strong hysteresis: prefer current direction to reduce jitter
+					var adjusted_dot = dot
+					if dir.normalized() == current_direction:
+						# Large bonus for continuing in same direction
+						adjusted_dot += 0.4
+					elif dir.x != 0 and dir.y != 0:  # Diagonal direction
+						# Penalty for diagonals to prefer straighter paths
+						adjusted_dot -= 0.2
+					
+					if adjusted_dot > best_dot:
+						best_dot = adjusted_dot
 						best_direction = dir
 				
-				var next_tile = position + best_direction * TILE_SIZE
+				var next_tile = position + best_direction.normalized() * TILE_SIZE
 				
 				# Check if the next tile is walkable
 				var can_move = true
@@ -732,10 +761,16 @@ func _physics_process(delta):
 					can_move = false
 				
 				if can_move:
-					target_position = next_tile
-					current_direction = best_direction
+					# Snap to tile center to ensure proper grid alignment
+					var tile_x = floor(next_tile.x / TILE_SIZE)
+					var tile_y = floor(next_tile.y / TILE_SIZE)
+					target_position = Vector2(tile_x * TILE_SIZE + TILE_SIZE / 2, tile_y * TILE_SIZE + TILE_SIZE / 2)
+					# For diagonal movement, convert to cardinal direction for animation
+					var dx = sign(best_direction.x)
+					var dy = sign(best_direction.y)
+					current_direction = calculate_direction(int(dx), int(dy))
 					is_moving = true
-					print("[ORC_FALLBACK] Moving directly toward player at direction ", get_direction_name(best_direction))
+					print("[ORC_FALLBACK] Moving directly toward player at direction ", get_direction_name(current_direction))
 			else:
 				process_orc_next_path_step()
 		else:
@@ -848,7 +883,7 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 	var f_score = {start: heuristic(start, goal)}
 	var closed_set = {}
 	var iterations = 0
-	var max_iterations = 50000  # Increased from 5000 to allow longer pathfinding
+	var max_iterations = 5000  # Reduced to improve performance - use fallback for long paths
 	
 	while open_set.size() > 0 and iterations < max_iterations:
 		iterations += 1
