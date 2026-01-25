@@ -764,17 +764,23 @@ func _physics_process(delta):
 					# Snap to tile center to ensure proper grid alignment
 					var tile_x = floor(next_tile.x / TILE_SIZE)
 					var tile_y = floor(next_tile.y / TILE_SIZE)
-					target_position = Vector2(tile_x * TILE_SIZE + TILE_SIZE / 2, tile_y * TILE_SIZE + TILE_SIZE / 2)
-					# For diagonal movement, convert to cardinal direction for animation
-					var dx = sign(best_direction.x)
-					var dy = sign(best_direction.y)
-					var diagonal_direction = Vector2(dx, dy)
-					# Only update facing if the diagonal direction actually changed
-					if diagonal_direction != last_fallback_direction:
-						last_fallback_direction = diagonal_direction
-						var new_direction = calculate_direction(int(dx), int(dy))
-						current_direction = new_direction
-					is_moving = true
+					var snapped_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE / 2, tile_y * TILE_SIZE + TILE_SIZE / 2)
+					# ABSOLUTE RULE: Double-check this tile is walkable before moving to it
+					if world != null and world.has_method("is_walkable"):
+						if not world.is_walkable(snapped_center):
+							can_move = false  # Reject this fallback direction
+					if can_move:
+						target_position = snapped_center
+						# For diagonal movement, convert to cardinal direction for animation
+						var dx = sign(best_direction.x)
+						var dy = sign(best_direction.y)
+						var diagonal_direction = Vector2(dx, dy)
+						# Only update facing if the diagonal direction actually changed
+						if diagonal_direction != last_fallback_direction:
+							last_fallback_direction = diagonal_direction
+							var new_direction = calculate_direction(int(dx), int(dy))
+							current_direction = new_direction
+						is_moving = true
 			else:
 				process_orc_next_path_step()
 		else:
@@ -813,6 +819,14 @@ func process_orc_next_path_step():
 		if new_direction != current_direction:
 			current_direction = new_direction
 		last_path_direction = tile_offset
+	
+	# ABSOLUTE RULE: Never initiate movement onto a water tile
+	if world != null and world.has_method("is_walkable"):
+		if not world.is_walkable(next_waypoint):
+			# Cannot move to this waypoint, it's not walkable (water)
+			# Remove from path and try next one
+			chase_path.pop_front()
+			return
 	
 	# Set target and begin movement
 	target_position = next_waypoint
