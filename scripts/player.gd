@@ -3,7 +3,7 @@ extends CharacterBody2D
 # Player controller for grid-based movement (like Tibia)
 
 const TILE_SIZE = 32
-const MOVE_SPEED = 200.0  # Pixels per second
+const MOVE_SPEED = 150.0  # Pixels per second
 
 var is_moving = false
 var target_position = Vector2.ZERO
@@ -31,7 +31,7 @@ var speed = 8
 var targeted_enemy = null  # Reference to the currently targeted enemy
 
 # Combat system
-var attack_cooldown = 1.5  # Seconds between attacks
+var attack_cooldown = 2.0  # Seconds between attacks
 var attack_timer = 0.0  # Current attack cooldown timer
 
 func _ready():
@@ -1238,8 +1238,21 @@ func handle_target_click(click_position: Vector2):
 					return
 
 func perform_attack(target: Node):
-	# Calculate damage based on strength and some randomness
-	var damage = strength + randi_range(-2, 2)
+	# Roll to hit - base 70% hit chance modified by dexterity
+	var hit_chance = 70 + (dexterity * 2)  # Each point of dexterity adds 2% hit chance
+	var hit_roll = randi_range(1, 100)
+	
+	if hit_roll > hit_chance:
+		# Miss!
+		print("[ATTACK] Missed! (rolled ", hit_roll, " vs ", hit_chance, "% hit chance)")
+		create_miss_effect(target.position)
+		return
+	
+	# Hit! Calculate damage based on strength with variance
+	# Base damage = strength * 2, with +/- 20% variance
+	var base_damage = strength * 2
+	var variance = randi_range(-20, 20) / 100.0  # -20% to +20%
+	var damage = max(1, int(base_damage * (1.0 + variance)))  # Minimum 1 damage
 	
 	# Apply damage to target
 	if target.has_meta("current_health"):
@@ -1248,7 +1261,10 @@ func perform_attack(target: Node):
 		target.set_meta("current_health", new_hp)
 		target.current_health = new_hp
 		
-		print("[ATTACK] Dealt ", damage, " damage to ", target.name, ". HP: ", new_hp, "/", target.get_meta("max_health"))
+		print("[ATTACK] Hit! Dealt ", damage, " damage to ", target.name, ". HP: ", new_hp, "/", target.get_meta("max_health"))
+		
+		# Create blood effect with damage number
+		create_blood_effect(target.position, damage)
 		
 		# Update target's health bar
 		if target.has_node("HealthBar"):
@@ -1665,3 +1681,21 @@ func die():
 	# Get the main scene to show game over UI
 	if parent and parent.has_method("show_game_over"):
 		parent.show_game_over()
+
+func create_miss_effect(target_pos: Vector2):
+	"""Create a smoke puff effect for a missed attack"""
+	var CombatEffects = load("res://scripts/combat_effects.gd")
+	var parent = get_parent()
+	if parent:
+		# Offset down by one tile to appear over the collision tile
+		var effect_pos = target_pos + Vector2(0, 32)
+		CombatEffects.create_miss_effect(parent, effect_pos)
+
+func create_blood_effect(target_pos: Vector2, damage: int = 0):
+	"""Create a blood spurt effect for a successful hit"""
+	var CombatEffects = load("res://scripts/combat_effects.gd")
+	var parent = get_parent()
+	if parent:
+		# Offset down by one tile to appear over the collision tile
+		var effect_pos = target_pos + Vector2(0, 32)
+		CombatEffects.create_blood_effect(parent, effect_pos, damage)

@@ -3,7 +3,7 @@ extends CharacterBody2D
 # Orc enemy controller
 
 const TILE_SIZE = 32
-const MOVE_SPEED = 150.0  # Pixels per second
+const MOVE_SPEED = 120.0  # Pixels per second
 const WALK_DISTANCE = 3  # How many tiles to walk before changing direction
 const COLLISION_RADIUS = 10.0  # Distance to check for collisions
 
@@ -58,7 +58,7 @@ var is_targeted = false
 
 # Combat system
 var targeted_enemy = null
-var attack_cooldown = 2.0  # Orc attacks slower than player
+var attack_cooldown = 2.5  # Orc attacks slower than player
 var attack_timer = 0.0
 var detection_range = TILE_SIZE * 10  # Can detect player from 10 tiles away
 
@@ -1306,10 +1306,30 @@ func perform_attack():
 	if targeted_enemy == null:
 		return
 	
-	var damage = strength + randi_range(-2, 2)
+	# Roll to hit - base 70% hit chance modified by dexterity
+	var hit_chance = 70 + (dexterity * 2)  # Each point of dexterity adds 2% hit chance
+	var hit_roll = randi_range(1, 100)
+	
+	if hit_roll > hit_chance:
+		# Miss!
+		print("[ORC ATTACK] Missed! (rolled ", hit_roll, " vs ", hit_chance, "% hit chance)")
+		create_miss_effect(targeted_enemy.position)
+		return
+	
+	# Hit! Calculate damage based on strength with variance
+	# Base damage = strength * 2, with +/- 20% variance
+	var base_damage = strength * 2
+	var variance = randi_range(-20, 20) / 100.0  # -20% to +20%
+	var damage = max(1, int(base_damage * (1.0 + variance)))  # Minimum 1 damage
+	
 	var target_health = targeted_enemy.get_meta("current_health")
 	target_health -= damage
 	targeted_enemy.set_meta("current_health", target_health)
+	
+	print("[ORC ATTACK] Hit! Dealt ", damage, " damage to player. HP: ", target_health, "/", targeted_enemy.get_meta("max_health"))
+	
+	# Create blood effect with damage number
+	create_blood_effect(targeted_enemy.position, damage)
 	
 	# Trigger health bar redraw
 	if targeted_enemy.has_node("HealthBar"):
@@ -1345,4 +1365,20 @@ func die():
 	# Remove the orc from the scene
 	queue_free()
 
+func create_miss_effect(target_pos: Vector2):
+	"""Create a smoke puff effect for a missed attack"""
+	var CombatEffects = load("res://scripts/combat_effects.gd")
+	var parent = get_parent()
+	if parent:
+		# Offset down by one tile to appear over the collision tile
+		var effect_pos = target_pos + Vector2(0, 32)
+		CombatEffects.create_miss_effect(parent, effect_pos)
 
+func create_blood_effect(target_pos: Vector2, damage: int = 0):
+	"""Create a blood spurt effect for a successful hit"""
+	var CombatEffects = load("res://scripts/combat_effects.gd")
+	var parent = get_parent()
+	if parent:
+		# Offset down by one tile to appear over the collision tile
+		var effect_pos = target_pos + Vector2(0, 32)
+		CombatEffects.create_blood_effect(parent, effect_pos, damage)
