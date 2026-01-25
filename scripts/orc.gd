@@ -24,6 +24,14 @@ var max_health = 50
 var current_health = 50
 var health_bar = null
 
+# Stats system
+var max_mp = 25
+var current_mp = 25
+var strength = 8
+var intelligence = 6
+var dexterity = 7
+var speed = 5
+
 # Targeting system
 var is_targeted = false
 
@@ -82,6 +90,15 @@ func _ready():
 	var health_bar_scene = preload("res://scenes/health_bar.tscn")
 	health_bar = health_bar_scene.instantiate()
 	add_child(health_bar)
+	
+	# Setup stats
+	current_mp = max_mp
+	set_meta("max_mp", max_mp)
+	set_meta("current_mp", current_mp)
+	set_meta("strength", strength)
+	set_meta("intelligence", intelligence)
+	set_meta("dexterity", dexterity)
+	set_meta("speed", speed)
 
 func create_orc_animations():
 	var sprite_frames = SpriteFrames.new()

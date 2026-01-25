@@ -20,6 +20,14 @@ var max_health = 100
 var current_health = 100
 var health_bar = null
 
+# Stats system
+var max_mp = 50
+var current_mp = 50
+var strength = 10
+var intelligence = 10
+var dexterity = 10
+var speed = 8
+
 # Targeting system
 var targeted_enemy = null  # Reference to the currently targeted enemy
 
@@ -46,6 +54,15 @@ func _ready():
 	var health_bar_scene = preload("res://scenes/health_bar.tscn")
 	health_bar = health_bar_scene.instantiate()
 	add_child(health_bar)
+	
+	# Setup stats
+	current_mp = max_mp
+	set_meta("max_mp", max_mp)
+	set_meta("current_mp", current_mp)
+	set_meta("strength", strength)
+	set_meta("intelligence", intelligence)
+	set_meta("dexterity", dexterity)
+	set_meta("speed", speed)
 
 func _process(_delta):
 	# Look for orc reference if we don't have it yet
