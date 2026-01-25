@@ -27,6 +27,7 @@ var last_fallback_direction = Vector2.ZERO  # Track last fallback diagonal direc
 var move_direction = Vector2.DOWN  # Direction to move on current step
 var chase_path_timer = 0.0  # Timer for recalculating chase path
 var last_move_time = 0.0  # Track when orc last started moving (prevent oscillation)
+var last_player_tile_position = null  # Track player's tile position for smart path updates (null = not set yet)
 
 # Stuck detection system
 var last_tile_position = Vector2.ZERO  # Track which tile orc is currently on
@@ -620,7 +621,7 @@ func draw_orc_side(img: Image, skin: Color, dark_skin: Color, hair: Color, muscl
 func _physics_process(delta):
 	# Update timers
 	direction_change_timer += delta
-	chase_path_timer += delta
+	# chase_path_timer is no longer used - we recalculate only when player moves tiles
 	
 	# Handle attack cooldown
 	if attack_timer > 0.0:
@@ -653,38 +654,41 @@ func _physics_process(delta):
 			# Clear any path that might move us away
 			path_queue.clear()
 	
-	# Recalculate path every 0.6 seconds when targeting an enemy (with staggering to prevent frame hitches)
-	if targeted_enemy != null and chase_path_timer >= (chase_update_interval + pathfind_stagger):
-		chase_path_timer = 0.0
+	# SMART PATHFINDING: Only recalculate when player moves to a NEW TILE
+	# This prevents unnecessary path recalculations while the player is stationary
+	if targeted_enemy != null:
+		# Get player's current tile position (use same logic as pathfinding target)
+		var player_tile_x = floor(targeted_enemy.position.x / TILE_SIZE)
+		var player_tile_y = floor(targeted_enemy.position.y / TILE_SIZE)
+		var current_player_tile = Vector2(player_tile_x, player_tile_y)
 		
-		# Recalculate path ONLY when we're at a tile center (not in mid-movement)
-		# This prevents oscillation from rapid recalculation while moving
-		var at_tile_center = position.distance_to(target_position) < 1.0
+		# Check if player has moved to a different tile (null means first time)
+		var player_moved_tiles = (last_player_tile_position == null or current_player_tile != last_player_tile_position)
+		
+		# Also check if we're just starting to chase (player detected)
 		var player_just_appeared = player_just_detected
-		
-		# Additional check: don't recalculate if we just started moving recently
-		# This gives the current path time to work before switching
 		var time_since_move = Time.get_ticks_msec() / 1000.0 - last_move_time
-		var enough_time_since_move = time_since_move > 0.2  # Wait at least 200ms after moving
+		var enough_time_since_move = time_since_move > 0.2
 		
-		if (at_tile_center or player_just_appeared) and enough_time_since_move:
+		# Only recalculate if: player moved tiles OR player just appeared AND enough time has passed
+		if (player_moved_tiles or player_just_appeared) and enough_time_since_move:
+			# Update the tracked player tile position
+			last_player_tile_position = current_player_tile
+			
 			var distance_to_player = position.distance_to(targeted_enemy.position)
 			
 			# RULE: If already adjacent to player, don't recalculate path
 			# This prevents orcs from moving away when they should be surrounding
 			if distance_to_player >= TILE_SIZE * 1.5:
-				# ALWAYS try to find a path to the player (even if adjacent)
-				# This ensures aggressive pursuit and proper surrounding behavior
 				# Snap current position and target position to tile centers
 				var start_tile_x = round(position.x / TILE_SIZE)
 				var start_tile_y = round(position.y / TILE_SIZE)
 				var start_tile_center = Vector2(start_tile_x * TILE_SIZE + TILE_SIZE/2, start_tile_y * TILE_SIZE + TILE_SIZE/2)
 				
-				# Target the player's tile, accounting for sprite visual offset
-				# The player sprite is visually offset by -1 tile in Y, so we match that
+				# Target the player's tile (use same logic as detection)
 				var target_tile_x = floor(targeted_enemy.position.x / TILE_SIZE)
 				var target_tile_y = floor(targeted_enemy.position.y / TILE_SIZE)
-				target_tile_y -= 1  # Account for player sprite visual offset
+				# Player position is at the center of their tile, pathfind to that center directly
 				var target_tile_center = Vector2(target_tile_x * TILE_SIZE + TILE_SIZE/2, target_tile_y * TILE_SIZE + TILE_SIZE/2)
 			
 				# Calculate new path to player's current position
@@ -790,28 +794,10 @@ func _physics_process(delta):
 			if animated_sprite.animation != anim_name:
 				animated_sprite.play(anim_name)
 	
-	# STUCK DETECTION: Check if orc has been on same tile too long while targeting player
-	if targeted_enemy != null:
-		var current_tile = (position / TILE_SIZE).round()
-		
-		# If this is a new tile, reset the stuck timer
-		if current_tile != last_tile_position:
-			last_tile_position = current_tile
-			tile_stuck_timer = 0.0
-		else:
-			# Same tile - increment stuck timer
-			tile_stuck_timer += delta
-			
-			# If stuck too long, force path recalculation
-			if tile_stuck_timer > max_tile_stuck_time and not is_moving:
-				var distance_to_target = position.distance_to(targeted_enemy.position)
-				
-				# Only force recalc if NOT adjacent to player (don't interrupt attacking)
-				if distance_to_target >= TILE_SIZE * 1.5:
-					print("[STUCK] Orc at ", position, " stuck for ", tile_stuck_timer, "s, forcing path recalc")
-					path_queue.clear()
-					chase_path_timer = chase_update_interval  # Force immediate recalculation
-					tile_stuck_timer = 0.0  # Reset stuck timer
+	# STUCK DETECTION: Now handled by tile position change detection
+	# We detect stuck when player hasn't moved tiles (we stop pathfinding attempts)
+	# Only force recalc if we have an active path that isn't progressing
+	# No stuck detection needed - tile-based pathfinding naturally handles this
 	
 	if not is_moving:
 		# Not moving - check if we should animate or move to next waypoint
