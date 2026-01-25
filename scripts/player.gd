@@ -67,6 +67,15 @@ func _ready():
 	set_meta("intelligence", intelligence)
 	set_meta("dexterity", dexterity)
 	set_meta("speed", speed)
+	
+	# Debug: Print all children to verify orcs are present
+	var parent = get_parent()
+	if parent:
+		print("[PLAYER_READY] Children of ", parent.name, ":")
+		for child in parent.get_children():
+			print("  - ", child.name, " (", child.get_class(), ")")
+			if child.name == "Orc":
+				print("    Orc position: ", child.position)
 
 func _process(_delta):
 	# Update attack cooldown
@@ -1724,38 +1733,45 @@ func update_animation(direction: Vector2, walking: bool):
 
 func is_position_occupied(target_position: Vector2) -> bool:
 	# Check if any entity occupies this position
-	# Use the cached orc reference
-	if orc_reference == null:
-		# Try to find it again
-		var parent = get_parent()
-		if parent:
-			orc_reference = parent.find_child("Orc", true, false)
-	
-	if orc_reference != null:
-		var distance = target_position.distance_to(orc_reference.position)
-		# Prevent occupying same tile - use stricter collision
-		var is_colliding = distance < TILE_SIZE
-		print("[COLLISION CHECK] Target: ", target_position, " vs Orc: ", orc_reference.position, " Distance: ", distance, " Threshold: ", TILE_SIZE, " BLOCKED: ", is_colliding)
-		return is_colliding
-	else:
-		print("[COLLISION] WARNING: Orc reference still not found!")
-		return false
+	# Check against all orcs in the parent
+	var parent = get_parent()
+	if parent:
+		# Get all orc children by checking their script
+		var orc_count = 0
+		var found_orcs = []
+		
+		for child in parent.get_children():
+			# Check if this is an orc by looking at its script
+			if child != self and child.get_script() != null and child.get_script().resource_path == "res://scripts/orc.gd":
+				found_orcs.append(child)
+				orc_count += 1
+				var distance = target_position.distance_to(child.position)
+				# Prevent occupying same tile - use stricter collision
+				var is_colliding = distance < TILE_SIZE
+				if is_colliding:
+					print("[COLLISION CHECK] Target: ", target_position, " vs Orc #", orc_count, " at ", child.position, " Distance: ", distance, " BLOCKED: true")
+					return true
+		if orc_count > 0:
+			print("[COLLISION CHECK] Target: ", target_position, " - checked ", orc_count, " orcs, no collision")
+		else:
+			print("[COLLISION CHECK] Target: ", target_position, " - NO ORCS FOUND!")
 	
 	return false
 
 func is_position_occupied_strict(target_position: Vector2) -> bool:
 	# Strict collision check for pathfinding - only block the exact tile
 	# This prevents pathfinding from getting stuck in a constrained search space
-	if orc_reference == null:
-		var parent = get_parent()
-		if parent:
-			orc_reference = parent.find_child("Orc", true, false)
-	
-	if orc_reference != null:
-		var distance = target_position.distance_to(orc_reference.position)
-		# Only block if very close (same tile, with small tolerance)
-		var is_colliding = distance < 5.0
-		return is_colliding
+	# Check against all orcs in the parent
+	var parent = get_parent()
+	if parent:
+		# Get all orc children by checking their script
+		for child in parent.get_children():
+			if child != self and child.get_script() != null and child.get_script().resource_path == "res://scripts/orc.gd":
+				var distance = target_position.distance_to(child.position)
+				# Only block if very close (same tile, with small tolerance)
+				var is_colliding = distance < 5.0
+				if is_colliding:
+					return true
 	
 	return false
 

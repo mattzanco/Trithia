@@ -760,6 +760,11 @@ func _physics_process(delta):
 					# Player is on that tile, can't move there
 					can_move = false
 				
+				# Check if the next tile is occupied by another orc
+				if can_move and is_tile_occupied_by_enemy(next_tile):
+					# Another orc is on that tile, can't move there
+					can_move = false
+				
 				if can_move:
 					# Snap to tile center to ensure proper grid alignment
 					var tile_x = floor(next_tile.x / TILE_SIZE)
@@ -828,6 +833,13 @@ func process_orc_next_path_step():
 			chase_path.pop_front()
 			return
 	
+	# Check if another orc is occupying this tile
+	if is_tile_occupied_by_enemy(next_waypoint):
+		# Cannot move to this waypoint, another orc is there
+		# Remove from path and try next one
+		chase_path.pop_front()
+		return
+	
 	# Set target and begin movement
 	target_position = next_waypoint
 	is_moving = true
@@ -868,6 +880,21 @@ func get_direction_name(dir: Vector2) -> String:
 	elif dir == Vector2.RIGHT:
 		return "right"
 	return "down"
+
+func is_tile_occupied_by_enemy(tile_pos: Vector2) -> bool:
+	"""Check if a tile is occupied by another orc (not this orc)"""
+	var parent = get_parent()
+	if parent == null:
+		return false
+	
+	# Get all children of the parent that are orcs
+	for child in parent.get_children():
+		if child is CharacterBody2D and child != self and child.script == self.script:
+			# This is another orc - check if it's on this tile
+			if child.position.distance_to(tile_pos) < TILE_SIZE:
+				return true
+	
+	return false
 
 func find_path(start: Vector2, goal: Vector2) -> Array:
 	if start == goal:
@@ -919,6 +946,10 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 			
 			# Check if player is occupying this tile
 			if player != null and neighbor.distance_to(player.position) < TILE_SIZE:
+				continue
+			
+			# Check if another orc is occupying this tile
+			if is_tile_occupied_by_enemy(neighbor):
 				continue
 			
 			# Calculate tentative g_score

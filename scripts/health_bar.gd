@@ -43,7 +43,8 @@ func _draw():
 	if character:
 		var font = ThemeDB.fallback_font
 		var font_size = 11  # Medium font size
-		var name_text = character.name
+		# Display "Orc" if the parent is an orc, otherwise use the character's name
+		var name_text = "Orc" if character.get_script().resource_path == "res://scripts/orc.gd" else character.name
 		var name_y = NAME_OFFSET_Y
 		
 		# Calculate text width to center it
