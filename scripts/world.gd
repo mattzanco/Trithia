@@ -149,4 +149,4 @@ func is_walkable(world_position: Vector2) -> bool:
 	if terrain_data.has(world_position):
 		var terrain = terrain_data[world_position]
 		return terrain != "water"  # Can walk on grass and stone, but not water
-	return true  # Default to walkable if not yet generated
+	return false  # Default to unwalkable if not yet generated (safer for ungenerated terrain)
