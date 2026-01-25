@@ -18,10 +18,13 @@ var direction_change_timer = 0.0
 var patrol_direction = Vector2.ZERO
 var player = null
 var world = null
-var chase_update_interval = 0.5  # Update chase path every 0.5 seconds
+var chase_update_interval = 1.0  # Update chase path every 1.0 second (was 0.5)
 var patrol_update_interval = 2.0  # Update patrol direction every 2 seconds
 var chase_path = []  # Path to follow when chasing
 var chase_path_index = 0  # Current index in the path
+var last_player_position = Vector2.ZERO  # Track player position for smart path updates
+var last_path_direction = Vector2.ZERO  # Track direction to avoid flashing during movement
+var move_direction = Vector2.DOWN  # Direction to move on current step
 
 # Health system
 var max_health = 50
@@ -80,6 +83,8 @@ func _ready():
 		round(position.x / TILE_SIZE) * TILE_SIZE + TILE_SIZE/2,
 		round(position.y / TILE_SIZE) * TILE_SIZE + TILE_SIZE/2
 	)
+	
+	print("Orc position after snapping: ", position)
 	
 	target_position = position
 	current_direction = Vector2.DOWN
@@ -616,12 +621,19 @@ func _physics_process(delta):
 		attack_timer -= delta
 	
 	# Check if player is in detection range
+	var player_just_detected = false
 	if player != null and targeted_enemy == null:
 		var distance_to_player = position.distance_to(player.position)
 		if distance_to_player <= detection_range:
 			targeted_enemy = player
+			player_just_detected = true
 			print("[ORC_AGGRO] Orc detected Player at distance ", distance_to_player)
-	
+		else:
+			print("[ORC_DETECT] Player at distance ", distance_to_player, " > detection_range ", detection_range)
+	elif targeted_enemy != null:
+		print("[ORC_HAS_TARGET] Already have target")
+	else:
+		print("[ORC_NO_PLAYER] Player reference is null")
 	# If we have a target, try to attack if adjacent
 	if targeted_enemy != null:
 		var distance_to_target = position.distance_to(targeted_enemy.position)
@@ -631,130 +643,167 @@ func _physics_process(delta):
 				perform_attack()
 				attack_timer = attack_cooldown
 	
-	# Decide on next move every 2 seconds (or more frequently when chasing)
-	var update_interval = patrol_update_interval
-	if targeted_enemy != null:
-		update_interval = chase_update_interval
-	
-	if direction_change_timer >= update_interval:
+	# Decide when to recalculate path
+	if (direction_change_timer >= chase_update_interval or player_just_detected) and targeted_enemy != null:
 		direction_change_timer = 0.0
 		
-		# Only try to move if we're at a tile center
-		if position.distance_to(target_position) < 1.0:
-			# If we have a target, use pathfinding to chase
-			if targeted_enemy != null:
-				# Calculate path to target
-				var orc_tile_center = position
-				var target_tile_center = targeted_enemy.position
+		# Only try to move if we're at a tile center (or just detected)
+		if position.distance_to(target_position) < 1.0 or player_just_detected:
+			# Recalculate path if player has moved significantly or just detected
+			var player_movement = targeted_enemy.position.distance_to(last_player_position)
+			if player_movement > TILE_SIZE * 0.8 or chase_path.size() == 0 or player_just_detected:
+				# Calculate path to target - snap target to tile center first
+				var target_tile_x = round(targeted_enemy.position.x / TILE_SIZE)
+				var target_tile_y = round(targeted_enemy.position.y / TILE_SIZE)
+				var target_tile_center = Vector2(target_tile_x * TILE_SIZE + TILE_SIZE/2, target_tile_y * TILE_SIZE + TILE_SIZE/2)
 				
-				chase_path = find_path(orc_tile_center, target_tile_center)
+				chase_path = find_path(position, target_tile_center)
 				chase_path_index = 0
+				last_player_position = targeted_enemy.position
 				
-				# If we have a path, start following it
-				if chase_path.size() > 1:
-					chase_path.remove_at(0)  # Remove current position
-					chase_path_index = 0
-				elif chase_path.size() == 0 and orc_tile_center.distance_to(target_tile_center) < TILE_SIZE * 1.5:
-					# Target is adjacent, move directly
-					chase_path = [target_tile_center]
-					chase_path_index = 0
-			else:
-				# No target, do random patrol
-				# Pick a random adjacent tile or stay still
-				var directions = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT, Vector2.ZERO]
-				patrol_direction = directions[randi() % directions.size()]
+				print("[ORC_PATHFINDING] Found path with ", chase_path.size(), " waypoints from ", position, " to ", targeted_enemy.position)
 				
-				# Calculate next tile
-				if patrol_direction != Vector2.ZERO:
-					var next_tile = position + patrol_direction * TILE_SIZE
-					
-					# Check if it's walkable and not occupied
-					if world != null and world.has_method("is_walkable"):
-						# The feet of the sprite are on the lower tile
-						var feet_tile = next_tile + Vector2(0, TILE_SIZE / 2)
-						if not world.is_walkable(feet_tile):
-							# Can't walk there, stay still
-							patrol_direction = Vector2.ZERO
-					
-					# Check for collision with player
-					if patrol_direction != Vector2.ZERO and player != null:
-						if next_tile.distance_to(player.position) < TILE_SIZE:
-							# Would collide, stay still
-							patrol_direction = Vector2.ZERO
-					
-					# If we can move, set target
-					if patrol_direction != Vector2.ZERO:
-						target_position = next_tile
-						is_moving = true
+				# Don't remove the first element here - let process_orc_next_path_step handle it
+				# This prevents double-removal of waypoints
+				
+				# Skip the starting position if it's in the path
+				if chase_path.size() > 0 and chase_path[0].distance_to(position) < TILE_SIZE * 0.1:
+					chase_path.pop_front()
+					print("[ORC_PATHFINDING] Removed starting position from path, now have ", chase_path.size(), " waypoints")
+				
+				# Immediately start following the new path
+				if chase_path.size() > 0 and not is_moving:
+					process_orc_next_path_step()
 	
-	# Handle chase path following
-	if targeted_enemy != null and chase_path.size() > 0 and chase_path_index < chase_path.size():
-		# Move to next waypoint in path
-		var next_waypoint = chase_path[chase_path_index]
-		
-		# Check if the next waypoint is occupied by the player
-		if next_waypoint.distance_to(player.position) < TILE_SIZE:
-			# Player is on that tile, can't move there
-			patrol_direction = Vector2.ZERO
-		else:
-			patrol_direction = (next_waypoint - position).normalized()
-			
-			# Move toward waypoint
-			if position.distance_to(next_waypoint) < 1.0:
-				# Reached waypoint, move to next
-				chase_path_index += 1
-				if chase_path_index < chase_path.size():
-					next_waypoint = chase_path[chase_path_index]
-					patrol_direction = (next_waypoint - position).normalized()
-					target_position = next_waypoint
-					is_moving = true
-			else:
-				target_position = next_waypoint
-				if not is_moving:
-					is_moving = true
-	elif targeted_enemy == null and patrol_direction == Vector2.ZERO:
-		# In patrol mode but no direction set - do nothing this frame
-		pass
-	
-	# Smooth movement toward target
-	if is_moving and position.distance_to(target_position) > 1.0:
+	# Move toward target if we have one
+	if is_moving:
+		# Smoothly move towards target position
 		var direction = (target_position - position).normalized()
 		var distance = position.distance_to(target_position)
-		var move_distance = MOVE_SPEED * delta
 		
-		if move_distance >= distance:
-			# Reached target
+		if distance < MOVE_SPEED * delta:
+			# Snap to target when close enough
 			position = target_position
 			var tile_x = floor(position.x / TILE_SIZE)
 			var tile_y = floor(position.y / TILE_SIZE)
 			print("[ORC_MOVE_COMPLETE] Snapped to tile (", tile_x, ",", tile_y, ") at pos ", position)
 			is_moving = false
-			patrol_direction = Vector2.ZERO
+			# Process next step in path
+			process_orc_next_path_step()
 		else:
-			position += direction * move_distance
-	elif is_moving:
-		# Snap to target
-		position = target_position
-		var tile_x = floor(position.x / TILE_SIZE)
-		var tile_y = floor(position.y / TILE_SIZE)
-		print("[ORC_MOVE_COMPLETE] Snapped to tile (", tile_x, ",", tile_y, ") at pos ", position)
-		is_moving = false
-		patrol_direction = Vector2.ZERO
-	
-	# Update animation
-	if is_moving:
-		current_direction = patrol_direction
+			# Move smoothly towards target
+			position += direction * MOVE_SPEED * delta
+		
+		# Update animation while moving
 		var dir_name = get_direction_name(current_direction)
 		if animated_sprite != null and animated_sprite.sprite_frames != null:
 			var anim_name = "walk_" + dir_name
 			if animated_sprite.animation != anim_name:
 				animated_sprite.play(anim_name)
 	else:
-		var dir_name = get_direction_name(current_direction)
-		if animated_sprite != null and animated_sprite.sprite_frames != null:
-			var anim_name = "idle_" + dir_name
-			if animated_sprite.animation != anim_name:
-				animated_sprite.play(anim_name)
+		# Not moving - try to start moving to next waypoint
+		if targeted_enemy != null:
+			# If we have no path, move directly toward the player as fallback
+			if chase_path.size() == 0:
+				var direction_to_player = (targeted_enemy.position - position).normalized()
+				# Find the closest cardinal direction
+				var best_direction = Vector2.DOWN
+				var best_dot = -2.0
+				for dir in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+					var dot = direction_to_player.dot(dir)
+					if dot > best_dot:
+						best_dot = dot
+						best_direction = dir
+				
+				var next_tile = position + best_direction * TILE_SIZE
+				
+				# Check if the next tile is occupied by the player
+				if player != null and next_tile.distance_to(player.position) < TILE_SIZE:
+					# Player is on that tile, can't move there
+					print("[ORC_BLOCKED] Player blocking tile at ", next_tile)
+				else:
+					target_position = next_tile
+					current_direction = best_direction
+					is_moving = true
+					print("[ORC_FALLBACK] Moving directly toward player at direction ", get_direction_name(best_direction))
+			else:
+				process_orc_next_path_step()
+		else:
+			# Idle animation
+			var dir_name = get_direction_name(current_direction)
+			if animated_sprite != null and animated_sprite.sprite_frames != null:
+				var anim_name = "idle_" + dir_name
+				if animated_sprite.animation != anim_name:
+					animated_sprite.play(anim_name)
+	
+	# Update z_index based on y position to ensure proper layering during diagonal movement
+	# Clamp to valid range to avoid exceeding Godot's z_index limits
+	z_index = clampi(int(position.y / 10) + 1000, 0, 10000)
+
+
+func process_orc_next_path_step():
+	"""Process the next step in the orc's chase path.
+	This mirrors the player's process_next_path_step() logic to ensure
+	consistent movement and animation behavior."""
+	print("[ORC_STEP] process_orc_next_path_step called. Path size: ", chase_path.size(), ", targeted_enemy: ", targeted_enemy != null)
+	
+	if targeted_enemy == null or chase_path.size() == 0:
+		print("[ORC_STEP] Early return - no enemy or empty path")
+		return
+	
+	# Get next waypoint
+	var next_waypoint = chase_path[0]
+	print("[ORC_STEP] Next waypoint: ", next_waypoint, " Current position: ", position)
+	
+	# Calculate movement direction
+	var raw_direction = next_waypoint - position
+	var dx = sign(raw_direction.x)
+	var dy = sign(raw_direction.y)
+	var tile_offset = Vector2(dx, dy)
+	
+	print("[ORC_STEP] raw_direction: ", raw_direction, " dx: ", dx, " dy: ", dy, " tile_offset: ", tile_offset)
+	
+	# Only update direction if it actually changed from the last step
+	if tile_offset != last_path_direction:
+		# Direction changed - calculate new facing
+		var new_direction = calculate_direction(int(dx), int(dy))
+		current_direction = new_direction
+		last_path_direction = tile_offset
+		print("[ORC_DIRECTION_CHANGE] New direction: ", get_direction_name(new_direction), " from tile_offset: ", tile_offset)
+	
+	# Set target and begin movement
+	target_position = next_waypoint
+	is_moving = true
+	chase_path_index = 0
+	chase_path.pop_front()  # Remove the waypoint we're moving to
+	
+	var tile_x = floor(next_waypoint.x / TILE_SIZE)
+	var tile_y = floor(next_waypoint.y / TILE_SIZE)
+	print("[ORC_PATH_STEP] Moving to waypoint tile (", tile_x, ",", tile_y, ") with ", chase_path.size(), " waypoints remaining")
+
+
+func calculate_direction(dx: int, dy: int) -> Vector2:
+	# Calculate cardinal direction with diagonal preference logic
+	if dx != 0 and dy != 0:
+		# Diagonal - prefer continuing in same direction
+		var facing_h = Vector2(dx, 0)
+		var facing_v = Vector2(0, dy)
+		var h_back = (facing_h == -current_direction)
+		var v_back = (facing_v == -current_direction)
+		if h_back and not v_back:
+			return facing_v
+		elif v_back and not h_back:
+			return facing_h
+		else:
+			if current_direction.x != 0:
+				return facing_v
+			else:
+				return facing_h
+	elif dx != 0:
+		return Vector2(dx, 0)
+	elif dy != 0:
+		return Vector2(0, dy)
+	return current_direction
 
 func get_direction_name(dir: Vector2) -> String:
 	if dir == Vector2.UP:
@@ -768,7 +817,10 @@ func get_direction_name(dir: Vector2) -> String:
 	return "down"
 
 func find_path(start: Vector2, goal: Vector2) -> Array:
+	print("[FIND_PATH] Called with start: ", start, " goal: ", goal)
+	
 	if start == goal:
+		print("[FIND_PATH] Start == goal, returning empty path")
 		return []
 	
 	# Check if goal is walkable
@@ -776,6 +828,7 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 		var feet_offset = Vector2(0, TILE_SIZE / 2)
 		var goal_feet = goal + feet_offset
 		if not world.is_walkable(goal_feet):
+			print("[FIND_PATH] Goal not walkable at ", goal_feet)
 			return []
 	
 	# A* pathfinding
@@ -785,7 +838,7 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 	var f_score = {start: heuristic(start, goal)}
 	var closed_set = {}
 	var iterations = 0
-	var max_iterations = 10000
+	var max_iterations = 50000  # Increased from 5000 to allow longer pathfinding
 	
 	while open_set.size() > 0 and iterations < max_iterations:
 		iterations += 1
@@ -800,7 +853,9 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 		
 		# Reached goal
 		if current == goal:
-			return reconstruct_path(came_from, current)
+			var path = reconstruct_path(came_from, current)
+			print("[FIND_PATH] Found path with ", path.size(), " nodes after ", iterations, " iterations")
+			return path
 		
 		open_set.erase(current)
 		closed_set[current] = true
@@ -833,6 +888,7 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 				if not neighbor in open_set:
 					open_set.append(neighbor)
 	
+	print("[FIND_PATH] No path found after ", iterations, " iterations. open_set size: ", open_set.size())
 	return []
 
 func get_neighbors(tile_center: Vector2) -> Array:
