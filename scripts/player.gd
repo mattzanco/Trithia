@@ -1760,13 +1760,30 @@ func is_position_occupied_strict(target_position: Vector2) -> bool:
 	return false
 
 func die():
-	# Player died - show game over screen
+	# Player died - create a dead body visual at player's feet position
 	print("[PLAYER_DIE] Player died at position ", position)
 	
-	# Get the main scene to show game over UI
-	var main = get_parent()
-	if main and main.has_method("show_game_over"):
-		main.show_game_over()
+	var dead_body = Node2D.new()
+	dead_body.position = position + Vector2(0, TILE_SIZE/2)  # Position at the feet tile
+	dead_body.z_index = 0  # On the ground, above terrain
 	
-	# For now, just remove the player
+	# Load and attach the dead body script
+	var dead_body_script = load("res://scripts/dead_body.gd")
+	dead_body.set_script(dead_body_script)
+	
+	# Add the dead body to the world node so it renders with terrain
+	var parent = get_parent()
+	if parent:
+		var world = parent.get_node_or_null("World")
+		if world:
+			world.add_child(dead_body)
+		else:
+			# Fallback to parent if world not found
+			parent.add_child(dead_body)
+	
+	# Remove the player sprite and show game over screen
 	queue_free()
+	
+	# Get the main scene to show game over UI
+	if parent and parent.has_method("show_game_over"):
+		parent.show_game_over()
