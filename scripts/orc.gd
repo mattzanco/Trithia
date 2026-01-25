@@ -628,13 +628,6 @@ func _physics_process(delta):
 		if distance_to_player <= detection_range:
 			targeted_enemy = player
 			player_just_detected = true
-			print("[ORC_AGGRO] Orc detected Player at distance ", distance_to_player)
-		else:
-			print("[ORC_DETECT] Player at distance ", distance_to_player, " > detection_range ", detection_range)
-	elif targeted_enemy != null:
-		print("[ORC_HAS_TARGET] Already have target")
-	else:
-		print("[ORC_NO_PLAYER] Player reference is null")
 	# If we have a target, try to attack if adjacent
 	if targeted_enemy != null:
 		var distance_to_target = position.distance_to(targeted_enemy.position)
@@ -665,7 +658,7 @@ func _physics_process(delta):
 					chase_path_index = 0
 					last_player_position = targeted_enemy.position
 					
-					print("[ORC_PATHFINDING] Found path with ", chase_path.size(), " waypoints from ", position, " to ", targeted_enemy.position)
+
 					
 					# Don't remove the first element here - let process_orc_next_path_step handle it
 					# This prevents double-removal of waypoints
@@ -673,9 +666,7 @@ func _physics_process(delta):
 					# Skip the starting position if it's in the path
 					if chase_path.size() > 0 and chase_path[0].distance_to(position) < TILE_SIZE * 0.1:
 						chase_path.pop_front()
-						print("[ORC_PATHFINDING] Removed starting position from path, now have ", chase_path.size(), " waypoints")
-					
-					# Immediately start following the new path
+
 					if chase_path.size() > 0 and not is_moving:
 						process_orc_next_path_step()
 	
@@ -688,9 +679,6 @@ func _physics_process(delta):
 		if distance < MOVE_SPEED * delta:
 			# Snap to target when close enough
 			position = target_position
-			var tile_x = floor(position.x / TILE_SIZE)
-			var tile_y = floor(position.y / TILE_SIZE)
-			print("[ORC_MOVE_COMPLETE] Snapped to tile (", tile_x, ",", tile_y, ") at pos ", position)
 			is_moving = false
 			# Process next step in path
 			process_orc_next_path_step()
@@ -752,13 +740,11 @@ func _physics_process(delta):
 				if world != null and world.has_method("is_walkable"):
 					var feet_tile = next_tile + Vector2(0, TILE_SIZE / 2)
 					if not world.is_walkable(feet_tile):
-						print("[ORC_UNWALKABLE] Tile at ", next_tile, " is not walkable")
 						can_move = false
 				
 				# Check if the next tile is occupied by the player
 				if can_move and player != null and next_tile.distance_to(player.position) < TILE_SIZE:
 					# Player is on that tile, can't move there
-					print("[ORC_BLOCKED] Player blocking tile at ", next_tile)
 					can_move = false
 				
 				if can_move:
@@ -776,7 +762,6 @@ func _physics_process(delta):
 						var new_direction = calculate_direction(int(dx), int(dy))
 						current_direction = new_direction
 					is_moving = true
-					print("[ORC_FALLBACK] Moving directly toward player at direction ", get_direction_name(current_direction))
 			else:
 				process_orc_next_path_step()
 		else:
@@ -796,23 +781,17 @@ func process_orc_next_path_step():
 	"""Process the next step in the orc's chase path.
 	This mirrors the player's process_next_path_step() logic to ensure
 	consistent movement and animation behavior."""
-	print("[ORC_STEP] process_orc_next_path_step called. Path size: ", chase_path.size(), ", targeted_enemy: ", targeted_enemy != null)
-	
 	if targeted_enemy == null or chase_path.size() == 0:
-		print("[ORC_STEP] Early return - no enemy or empty path")
 		return
 	
 	# Get next waypoint
 	var next_waypoint = chase_path[0]
-	print("[ORC_STEP] Next waypoint: ", next_waypoint, " Current position: ", position)
 	
 	# Calculate movement direction
 	var raw_direction = next_waypoint - position
 	var dx = sign(raw_direction.x)
 	var dy = sign(raw_direction.y)
 	var tile_offset = Vector2(dx, dy)
-	
-	print("[ORC_STEP] raw_direction: ", raw_direction, " dx: ", dx, " dy: ", dy, " tile_offset: ", tile_offset)
 	
 	# Only update direction if it actually changed from the last step
 	if tile_offset != last_path_direction:
@@ -821,17 +800,12 @@ func process_orc_next_path_step():
 		if new_direction != current_direction:
 			current_direction = new_direction
 		last_path_direction = tile_offset
-		print("[ORC_DIRECTION_CHANGE] New direction: ", get_direction_name(new_direction), " from tile_offset: ", tile_offset)
 	
 	# Set target and begin movement
 	target_position = next_waypoint
 	is_moving = true
 	chase_path_index = 0
 	chase_path.pop_front()  # Remove the waypoint we're moving to
-	
-	var tile_x = floor(next_waypoint.x / TILE_SIZE)
-	var tile_y = floor(next_waypoint.y / TILE_SIZE)
-	print("[ORC_PATH_STEP] Moving to waypoint tile (", tile_x, ",", tile_y, ") with ", chase_path.size(), " waypoints remaining")
 
 
 func calculate_direction(dx: int, dy: int) -> Vector2:
@@ -869,10 +843,7 @@ func get_direction_name(dir: Vector2) -> String:
 	return "down"
 
 func find_path(start: Vector2, goal: Vector2) -> Array:
-	print("[FIND_PATH] Called with start: ", start, " goal: ", goal)
-	
 	if start == goal:
-		print("[FIND_PATH] Start == goal, returning empty path")
 		return []
 	
 	# Check if goal is walkable
@@ -880,7 +851,6 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 		var feet_offset = Vector2(0, TILE_SIZE / 2)
 		var goal_feet = goal + feet_offset
 		if not world.is_walkable(goal_feet):
-			print("[FIND_PATH] Goal not walkable at ", goal_feet)
 			return []
 	
 	# A* pathfinding
@@ -906,7 +876,6 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 		# Reached goal
 		if current == goal:
 			var path = reconstruct_path(came_from, current)
-			print("[FIND_PATH] Found path with ", path.size(), " nodes after ", iterations, " iterations")
 			return path
 		
 		open_set.erase(current)
@@ -940,7 +909,6 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 				if not neighbor in open_set:
 					open_set.append(neighbor)
 	
-	print("[FIND_PATH] No path found after ", iterations, " iterations. open_set size: ", open_set.size())
 	return []
 
 func get_neighbors(tile_center: Vector2) -> Array:
