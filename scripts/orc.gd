@@ -646,29 +646,39 @@ func _physics_process(delta):
 			# Skip pathfinding if player is very far away - use fallback instead
 			var distance_to_player = position.distance_to(targeted_enemy.position)
 			if distance_to_player <= TILE_SIZE * 30:
-				# Recalculate path if player has moved significantly or just detected
-				var player_movement = targeted_enemy.position.distance_to(last_player_position)
-				if player_movement > TILE_SIZE * 0.8 or chase_path.size() == 0 or player_just_detected:
-					# Calculate path to target - snap target to tile center first
-					var target_tile_x = round(targeted_enemy.position.x / TILE_SIZE)
-					var target_tile_y = round(targeted_enemy.position.y / TILE_SIZE)
-					var target_tile_center = Vector2(target_tile_x * TILE_SIZE + TILE_SIZE/2, target_tile_y * TILE_SIZE + TILE_SIZE/2)
-					
-					chase_path = find_path(position, target_tile_center)
-					chase_path_index = 0
-					last_player_position = targeted_enemy.position
-					
+				# Don't pathfind if very close to player - just use fallback movement to circle and attack
+				# This prevents unnecessary path recalculations when adjacent
+				if distance_to_player > TILE_SIZE * 1.5:
+					# Recalculate path only if player has moved significantly or we have no path and we haven't been using fallback
+					var player_movement = targeted_enemy.position.distance_to(last_player_position)
+					if player_movement > TILE_SIZE * 0.8 or (chase_path.size() == 0 and not is_moving) or player_just_detected:
+						# Calculate path to target - snap both start and target to tile center first
+						var start_tile_x = round(position.x / TILE_SIZE)
+						var start_tile_y = round(position.y / TILE_SIZE)
+						var start_tile_center = Vector2(start_tile_x * TILE_SIZE + TILE_SIZE/2, start_tile_y * TILE_SIZE + TILE_SIZE/2)
+						
+						var target_tile_x = round(targeted_enemy.position.x / TILE_SIZE)
+						var target_tile_y = round(targeted_enemy.position.y / TILE_SIZE)
+						var target_tile_center = Vector2(target_tile_x * TILE_SIZE + TILE_SIZE/2, target_tile_y * TILE_SIZE + TILE_SIZE/2)
+						
+						chase_path = find_path(start_tile_center, target_tile_center)
+						chase_path_index = 0
+						last_player_position = targeted_enemy.position
+						
 
-					
-					# Don't remove the first element here - let process_orc_next_path_step handle it
-					# This prevents double-removal of waypoints
-					
-					# Skip the starting position if it's in the path
-					if chase_path.size() > 0 and chase_path[0].distance_to(position) < TILE_SIZE * 0.1:
-						chase_path.pop_front()
+						
+						# Don't remove the first element here - let process_orc_next_path_step handle it
+						# This prevents double-removal of waypoints
+						
+						# Skip the starting position if it's in the path
+						if chase_path.size() > 0 and chase_path[0].distance_to(position) < TILE_SIZE * 0.1:
+							chase_path.pop_front()
 
-					if chase_path.size() > 0 and not is_moving:
-						process_orc_next_path_step()
+						if chase_path.size() > 0 and not is_moving:
+							process_orc_next_path_step()
+				else:
+					# When very close, clear the path and use fallback movement to circle around
+					chase_path.clear()
 	
 	# Move toward target if we have one
 	if is_moving:
@@ -738,8 +748,11 @@ func _physics_process(delta):
 				# Check if the next tile is walkable
 				var can_move = true
 				if world != null and world.has_method("is_walkable"):
-					var feet_tile = next_tile + Vector2(0, TILE_SIZE / 2)
-					if not world.is_walkable(feet_tile):
+					# Snap to tile center before checking walkability
+					var check_tile_x = round(next_tile.x / TILE_SIZE)
+					var check_tile_y = round(next_tile.y / TILE_SIZE)
+					var check_tile_center = Vector2(check_tile_x * TILE_SIZE + TILE_SIZE / 2, check_tile_y * TILE_SIZE + TILE_SIZE / 2)
+					if not world.is_walkable(check_tile_center):
 						can_move = false
 				
 				# Check if the next tile is occupied by the player
@@ -848,9 +861,7 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 	
 	# Check if goal is walkable
 	if world and world.has_method("is_walkable"):
-		var feet_offset = Vector2(0, TILE_SIZE / 2)
-		var goal_feet = goal + feet_offset
-		if not world.is_walkable(goal_feet):
+		if not world.is_walkable(goal):
 			return []
 	
 	# A* pathfinding
@@ -889,9 +900,7 @@ func find_path(start: Vector2, goal: Vector2) -> Array:
 			
 			# Check walkability
 			if world and world.has_method("is_walkable"):
-				var feet_offset = Vector2(0, TILE_SIZE / 2)
-				var feet_position = neighbor + feet_offset
-				if not world.is_walkable(feet_position):
+				if not world.is_walkable(neighbor):
 					continue
 			
 			# Check if player is occupying this tile
