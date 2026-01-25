@@ -3,7 +3,7 @@ extends CharacterBody2D
 # Orc enemy controller
 
 const TILE_SIZE = 32
-const MOVE_SPEED = 100.0  # Pixels per second
+const MOVE_SPEED = 150.0  # Pixels per second
 const WALK_DISTANCE = 3  # How many tiles to walk before changing direction
 const COLLISION_RADIUS = 10.0  # Distance to check for collisions
 
@@ -868,6 +868,37 @@ func _physics_process(delta):
 						return
 				
 				is_moving = false
+				
+				# CRITICAL: Check if player moved to a new tile while we were moving
+				# If so, abandon the old path and recalculate a better one
+				if targeted_enemy != null and path_queue.size() > 0:
+					var player_tile_x = floor(targeted_enemy.position.x / TILE_SIZE)
+					var player_tile_y = floor(targeted_enemy.position.y / TILE_SIZE)
+					var current_player_tile = Vector2(player_tile_x, player_tile_y)
+					
+					# If player moved to a different tile, recalculate path
+					if last_player_tile_position != null and current_player_tile != last_player_tile_position:
+						# Player moved! Abandon the old path and recalculate
+						path_queue.clear()
+						last_player_tile_position = current_player_tile
+						
+						# Calculate new path from current position
+						var start_tile_x = round(position.x / TILE_SIZE)
+						var start_tile_y = round(position.y / TILE_SIZE)
+						var start_tile_center = Vector2(start_tile_x * TILE_SIZE + TILE_SIZE/2, start_tile_y * TILE_SIZE + TILE_SIZE/2)
+						
+						var target_tile_x = floor(targeted_enemy.position.x / TILE_SIZE)
+						var target_tile_y = floor(targeted_enemy.position.y / TILE_SIZE)
+						var target_tile_center = Vector2(target_tile_x * TILE_SIZE + TILE_SIZE/2, target_tile_y * TILE_SIZE + TILE_SIZE/2)
+						
+						var new_path = find_path(start_tile_center, target_tile_center)
+						
+						# Remove starting position if it's in the path
+						if new_path.size() > 0 and new_path[0].distance_to(position) < TILE_SIZE * 0.5:
+							new_path.pop_front()
+						
+						path_queue = new_path
+				
 				# Process next step in path
 				process_next_path_step()
 			else:
