@@ -614,9 +614,9 @@ func _physics_process(delta):
 				
 				# Check if it's walkable and not occupied
 				if world != null and world.has_method("is_walkable"):
-					var feet_offset = Vector2(0, TILE_SIZE / 2)
-					var feet_position = next_tile + feet_offset
-					if not world.is_walkable(feet_position):
+					# The feet of the sprite are on the lower tile
+					var feet_tile = next_tile + Vector2(0, TILE_SIZE / 2)
+					if not world.is_walkable(feet_tile):
 						# Can't walk there, stay still
 						patrol_direction = Vector2.ZERO
 				

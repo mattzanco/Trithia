@@ -31,6 +31,10 @@ var speed = 8
 # Targeting system
 var targeted_enemy = null  # Reference to the currently targeted enemy
 
+# Combat system
+var attack_cooldown = 1.0  # Seconds between attacks
+var attack_timer = 0.0  # Current attack cooldown timer
+
 func _ready():
 	# Create animated sprite with walking animations
 	create_player_animations()
@@ -65,6 +69,18 @@ func _ready():
 	set_meta("speed", speed)
 
 func _process(_delta):
+	# Update attack cooldown
+	if attack_timer > 0:
+		attack_timer -= _delta
+	
+	# Auto-attack targeted enemy if in range
+	if targeted_enemy != null and attack_timer <= 0:
+		var distance_to_target = position.distance_to(targeted_enemy.position)
+		# Check if target is adjacent (within 1.5 tiles)
+		if distance_to_target < TILE_SIZE * 1.5:
+			perform_attack(targeted_enemy)
+			attack_timer = attack_cooldown
+	
 	# Look for orc reference if we don't have it yet
 	if orc_reference == null:
 		var parent = get_parent()
@@ -1223,6 +1239,23 @@ func handle_target_click(click_position: Vector2):
 			
 			# Notify orc to redraw
 			orc_reference.queue_redraw()
+
+func perform_attack(target: Node):
+	# Calculate damage based on strength and some randomness
+	var damage = strength + randi_range(-2, 2)
+	
+	# Apply damage to target
+	if target.has_meta("current_health"):
+		var current_hp = target.get_meta("current_health")
+		var new_hp = max(0, current_hp - damage)
+		target.set_meta("current_health", new_hp)
+		target.current_health = new_hp
+		
+		print("[ATTACK] Dealt ", damage, " damage to ", target.name, ". HP: ", new_hp, "/", target.get_meta("max_health"))
+		
+		# Update target's health bar
+		if target.has_node("HealthBar"):
+			target.get_node("HealthBar").queue_redraw()
 
 func move_to_position(target: Vector2):
 	# Convert click position to tile coordinates (where we want feet to land)
