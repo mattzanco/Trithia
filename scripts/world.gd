@@ -141,10 +141,208 @@ func _draw():
 		else:
 			# Fallback to white if neither texture nor color available
 			draw_rect(tile_rect, Color.WHITE)
+	
+
 
 func is_walkable(world_position: Vector2) -> bool:
 	# Check if the given world position is walkable
+	# First try exact position match
 	if terrain_data.has(world_position):
 		var terrain = terrain_data[world_position]
-		return terrain != "water"  # Can walk on grass and stone, but not water
-	return false  # Default to unwalkable if not yet generated (safer for ungenerated terrain)
+		return terrain != "water"
+	
+	# If no exact match, find the closest tile and check it
+	# Round to nearest tile center
+	var tile_x = round(world_position.x / TILE_SIZE)
+	var tile_y = round(world_position.y / TILE_SIZE)
+	var nearest_tile = Vector2(tile_x * TILE_SIZE + TILE_SIZE / 2, tile_y * TILE_SIZE + TILE_SIZE / 2)
+	
+	if terrain_data.has(nearest_tile):
+		var terrain = terrain_data[nearest_tile]
+		return terrain != "water"
+	
+	# If terrain not yet generated, check if it would be water based on noise
+	# This provides early validation before terrain is fully generated
+	if has_method("generate_chunk"):
+		# Check the noise value at this position
+		var tile_x_int = int(tile_x)
+		var tile_y_int = int(tile_y)
+		var noise_val = noise.get_noise_2d(tile_x_int, tile_y_int)
+		# Return false (unwalkable) if it would be water
+		if noise_val < -0.3:
+			return false
+		# If not water according to noise, it's walkable
+		return true
+	
+	# If no noise generation method, assume it's walkable
+	return true
+
+func get_terrain_at(world_position: Vector2) -> String:
+	"""Get terrain type at a world position"""
+	if terrain_data.has(world_position):
+		return terrain_data[world_position]
+	
+	# Check nearest tile
+	var tile_x = round(world_position.x / TILE_SIZE)
+	var tile_y = round(world_position.y / TILE_SIZE)
+	var nearest_tile = Vector2(tile_x * TILE_SIZE + TILE_SIZE / 2, tile_y * TILE_SIZE + TILE_SIZE / 2)
+	
+	if terrain_data.has(nearest_tile):
+		return terrain_data[nearest_tile]
+	
+	# For ungenerated terrain, check noise value prediction
+	var tile_x_int = int(tile_x)
+	var tile_y_int = int(tile_y)
+	var noise_val = noise.get_noise_2d(tile_x_int, tile_y_int)
+	if noise_val < -0.3:
+		return "water"
+	elif noise_val < 0.2:
+		return "grass"
+	else:
+		return "stone"
+func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
+	"""Shared pathfinding function used by both player and orcs.
+	
+	Args:
+		start: Starting tile center position
+		goal: Goal tile center position
+		requester: The node requesting the path (used to exclude it from occupancy checks)
+	
+	Returns:
+		Array of waypoints (tile centers) from start to goal
+	"""
+	
+	# If start and goal are the same, no path needed
+	if start == goal:
+		return []
+	
+	# Check if goal is walkable (apply feet offset to account for sprite animation)
+	var feet_offset = Vector2(0, TILE_SIZE / 2)
+	var goal_feet = goal + feet_offset
+	var goal_tile_x = floor(goal_feet.x / TILE_SIZE)
+	var goal_tile_y = floor(goal_feet.y / TILE_SIZE)
+	var goal_tile_center = Vector2(goal_tile_x * TILE_SIZE + TILE_SIZE/2, goal_tile_y * TILE_SIZE + TILE_SIZE/2)
+	if not is_walkable(goal_tile_center):
+		return []
+	
+	# A* pathfinding
+	var open_set = [start]
+	var came_from = {}
+	var g_score = {start: 0}
+	var f_score = {start: heuristic(start, goal)}
+	var closed_set = {}
+	var iterations = 0
+	var max_iterations = 50000
+	
+	while open_set.size() > 0 and iterations < max_iterations:
+		iterations += 1
+		# Find node with lowest f_score
+		var current = open_set[0]
+		var current_f = f_score.get(current, INF)
+		var current_h = heuristic(current, goal)
+		for node in open_set:
+			var node_f = f_score.get(node, INF)
+			if node_f < current_f:
+				current = node
+				current_f = node_f
+				current_h = heuristic(node, goal)
+			elif abs(node_f - current_f) < 0.01:  # Tie-breaking: prefer node closer to goal
+				var node_h = heuristic(node, goal)
+				if node_h < current_h:
+					current = node
+					current_f = node_f
+					current_h = node_h
+		
+		# Reached goal
+		if current == goal:
+			return reconstruct_path(came_from, current)
+		
+		open_set.erase(current)
+		closed_set[current] = true
+		
+		# Check all neighbors (8 directions)
+		var neighbors = get_neighbors_world(current)
+		for neighbor in neighbors:
+			if neighbor in closed_set:
+				continue
+			
+			# Check walkability (apply feet offset)
+			var feet_position = neighbor + feet_offset
+			var tile_x = floor(feet_position.x / TILE_SIZE)
+			var tile_y = floor(feet_position.y / TILE_SIZE)
+			var tile_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
+			
+			if not is_walkable(tile_center):
+				continue
+			
+			# Check if occupied by another entity (not by requester itself)
+			if is_tile_occupied_by_other(neighbor, requester):
+				continue
+			
+			# Calculate tentative g_score
+			var tentative_g = g_score.get(current, INF) + current.distance_to(neighbor)
+			
+			if tentative_g < g_score.get(neighbor, INF):
+				came_from[neighbor] = current
+				g_score[neighbor] = tentative_g
+				# Prefer diagonal movement by reducing its effective cost
+				var move_dir = (neighbor - current).normalized()
+				var is_diagonal = abs(move_dir.x) > 0.5 and abs(move_dir.y) > 0.5
+				var diagonal_bonus = -3.0 if is_diagonal else 0.0
+				f_score[neighbor] = tentative_g + heuristic(neighbor, goal) + diagonal_bonus
+				
+				if not neighbor in open_set:
+					open_set.append(neighbor)
+	
+	# No path found
+	return []
+
+func get_neighbors_world(tile_center: Vector2) -> Array:
+	"""Get all 8 neighboring tiles (world version for pathfinding)"""
+	var neighbors = []
+	var tile_x = floor(tile_center.x / TILE_SIZE)
+	var tile_y = floor(tile_center.y / TILE_SIZE)
+	
+	var directions = [
+		Vector2(1, 0), Vector2(1, 1), Vector2(0, 1), Vector2(-1, 1),
+		Vector2(-1, 0), Vector2(-1, -1), Vector2(0, -1), Vector2(1, -1)
+	]
+	
+	for dir in directions:
+		var neighbor_x = tile_x + dir.x
+		var neighbor_y = tile_y + dir.y
+		var neighbor_center = Vector2(neighbor_x * TILE_SIZE + TILE_SIZE/2, neighbor_y * TILE_SIZE + TILE_SIZE/2)
+		neighbors.append(neighbor_center)
+	
+	return neighbors
+
+func heuristic(a: Vector2, b: Vector2) -> float:
+	"""Heuristic for A* (Chebyshev distance for 8-directional movement)"""
+	var dx = abs(a.x - b.x) / TILE_SIZE
+	var dy = abs(a.y - b.y) / TILE_SIZE
+	return max(dx, dy) * TILE_SIZE
+
+func reconstruct_path(came_from: Dictionary, current: Vector2) -> Array:
+	"""Reconstruct the path from came_from map"""
+	var path = [current]
+	while current in came_from:
+		current = came_from[current]
+		path.insert(0, current)
+	return path
+
+func is_tile_occupied_by_other(tile_position: Vector2, requester: Node) -> bool:
+	"""Check if a tile is occupied by another entity (not the requester)"""
+	var parent = get_parent()
+	if parent:
+		for child in parent.get_children():
+			# Skip the requester itself
+			if child == requester:
+				continue
+			
+			# Check if any other character is on this tile
+			if child is CharacterBody2D and child.has_method("get_position"):
+				var distance = tile_position.distance_to(child.position)
+				if distance < 5.0:  # Same tile with small tolerance
+					return true
+	
+	return false

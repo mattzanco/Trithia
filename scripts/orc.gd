@@ -18,14 +18,14 @@ var direction_change_timer = 0.0
 var patrol_direction = Vector2.ZERO
 var player = null
 var world = null
-var chase_update_interval = 1.0  # Update chase path every 1.0 second (was 0.5)
+var chase_update_interval = 0.4  # Update chase path every 0.4 seconds (faster pursuit)
 var patrol_update_interval = 2.0  # Update patrol direction every 2 seconds
-var chase_path = []  # Path to follow when chasing
-var chase_path_index = 0  # Current index in the path
+var path_queue = []  # Queue of positions to move through (like player)
 var last_player_position = Vector2.ZERO  # Track player position for smart path updates
 var last_path_direction = Vector2.ZERO  # Track direction to avoid flashing during movement
 var last_fallback_direction = Vector2.ZERO  # Track last fallback diagonal direction
 var move_direction = Vector2.DOWN  # Direction to move on current step
+var chase_path_timer = 0.0  # Timer for recalculating chase path
 
 # Health system
 var max_health = 50
@@ -53,13 +53,7 @@ func _ready():
 	# Get the AnimatedSprite2D node
 	animated_sprite = $AnimatedSprite2D
 	
-	print("Orc _ready() called")
-	print("Orc position: ", position)
-	print("Orc animated_sprite node: ", animated_sprite)
-	print("Orc parent: ", get_parent())
-	
 	if animated_sprite == null:
-		print("ERROR: AnimatedSprite2D node not found!")
 		return
 	
 	# Get reference to the player and world for collision detection
@@ -67,10 +61,7 @@ func _ready():
 	if parent:
 		player = parent.find_child("Player", true, false)
 		world = parent.find_child("World", true, false)
-		print("Orc found Player: ", player)
-		print("Orc found World: ", world)
 	else:
-		print("ERROR: Orc has no parent!")
 		return
 	
 	# Create animated sprite with walking animations
@@ -85,8 +76,6 @@ func _ready():
 		round(position.y / TILE_SIZE) * TILE_SIZE + TILE_SIZE/2
 	)
 	
-	print("Orc position after snapping: ", position)
-	
 	target_position = position
 	
 	# Set random facing direction
@@ -98,9 +87,6 @@ func _ready():
 	# Start with idle animation for the random direction
 	if animated_sprite.sprite_frames != null:
 		animated_sprite.play("idle_" + direction_names[random_index])
-		print("Orc animation started facing " + direction_names[random_index])
-	else:
-		print("ERROR: sprite_frames is null after create_orc_animations!")
 	
 	# Initialize targeted_enemy to the player
 	targeted_enemy = null  # Will be set when detecting player
@@ -619,8 +605,9 @@ func draw_orc_side(img: Image, skin: Color, dark_skin: Color, hair: Color, muscl
 				img.set_pixel(outline_x, y, outline)
 
 func _physics_process(delta):
-	# Update direction change timer
+	# Update timers
 	direction_change_timer += delta
+	chase_path_timer += delta
 	
 	# Handle attack cooldown
 	if attack_timer > 0.0:
@@ -633,57 +620,52 @@ func _physics_process(delta):
 		if distance_to_player <= detection_range:
 			targeted_enemy = player
 			player_just_detected = true
-	# If we have a target, try to attack if adjacent
+	
+	# If we have a target, check if we should attack
 	if targeted_enemy != null:
 		var distance_to_target = position.distance_to(targeted_enemy.position)
 		if distance_to_target < TILE_SIZE * 1.5:
-			# Player is adjacent, perform attack
+			# Player is adjacent (surrounding behavior) - perform attack
 			if attack_timer <= 0.0:
 				perform_attack()
 				attack_timer = attack_cooldown
 	
-	# Decide when to recalculate path
-	if (direction_change_timer >= chase_update_interval or player_just_detected) and targeted_enemy != null:
-		direction_change_timer = 0.0
+	# Recalculate path every 0.4 seconds when targeting an enemy
+	if targeted_enemy != null and chase_path_timer >= chase_update_interval:
+		chase_path_timer = 0.0
 		
-		# Only try to move if we're at a tile center (or just detected)
+		# Recalculate path whenever we're at a tile center (not in mid-movement)
 		if position.distance_to(target_position) < 1.0 or player_just_detected:
-			# Skip pathfinding if player is very far away - use fallback instead
 			var distance_to_player = position.distance_to(targeted_enemy.position)
-			if distance_to_player <= TILE_SIZE * 30:
-				# Don't pathfind if very close to player - just use fallback movement to circle and attack
-				# This prevents unnecessary path recalculations when adjacent
-				if distance_to_player > TILE_SIZE * 1.5:
-					# Recalculate path only if player has moved significantly or we have no path and we haven't been using fallback
-					var player_movement = targeted_enemy.position.distance_to(last_player_position)
-					if player_movement > TILE_SIZE * 0.8 or (chase_path.size() == 0 and not is_moving) or player_just_detected:
-						# Calculate path to target - snap both start and target to tile center first
-						var start_tile_x = round(position.x / TILE_SIZE)
-						var start_tile_y = round(position.y / TILE_SIZE)
-						var start_tile_center = Vector2(start_tile_x * TILE_SIZE + TILE_SIZE/2, start_tile_y * TILE_SIZE + TILE_SIZE/2)
-						
-						var target_tile_x = round(targeted_enemy.position.x / TILE_SIZE)
-						var target_tile_y = round(targeted_enemy.position.y / TILE_SIZE)
-						var target_tile_center = Vector2(target_tile_x * TILE_SIZE + TILE_SIZE/2, target_tile_y * TILE_SIZE + TILE_SIZE/2)
-						
-						chase_path = find_path(start_tile_center, target_tile_center)
-						chase_path_index = 0
-						last_player_position = targeted_enemy.position
-						
-
-						
-						# Don't remove the first element here - let process_orc_next_path_step handle it
-						# This prevents double-removal of waypoints
-						
-						# Skip the starting position if it's in the path
-						if chase_path.size() > 0 and chase_path[0].distance_to(position) < TILE_SIZE * 0.1:
-							chase_path.pop_front()
-
-						if chase_path.size() > 0 and not is_moving:
-							process_orc_next_path_step()
-				else:
-					# When very close, clear the path and use fallback movement to circle around
-					chase_path.clear()
+			
+			# ALWAYS try to find a path to the player (even if adjacent)
+			# This ensures aggressive pursuit and proper surrounding behavior
+			# Snap current position and target position to tile centers
+			var start_tile_x = round(position.x / TILE_SIZE)
+			var start_tile_y = round(position.y / TILE_SIZE)
+			var start_tile_center = Vector2(start_tile_x * TILE_SIZE + TILE_SIZE/2, start_tile_y * TILE_SIZE + TILE_SIZE/2)
+			
+			# Target the player's tile, accounting for sprite visual offset
+			# The player sprite is visually offset by -1 tile in Y, so we match that
+			var target_tile_x = floor(targeted_enemy.position.x / TILE_SIZE)
+			var target_tile_y = floor(targeted_enemy.position.y / TILE_SIZE)
+			target_tile_y -= 1  # Account for player sprite visual offset
+			var target_tile_center = Vector2(target_tile_x * TILE_SIZE + TILE_SIZE/2, target_tile_y * TILE_SIZE + TILE_SIZE/2)
+		
+			# Calculate new path to player's current position
+			var new_path = find_path(start_tile_center, target_tile_center)
+			
+			# Replace path_queue with new path (even if empty - indicates no path available)
+			path_queue = new_path
+			# A* already filtered water during pathfinding
+			
+			# Remove the starting position if it's in the path and we're already on it
+			if path_queue.size() > 0 and path_queue[0].distance_to(position) < TILE_SIZE * 0.1:
+				path_queue.pop_front()
+			
+			# Start moving on the new path if not already moving and we have waypoints
+			if path_queue.size() > 0 and not is_moving:
+				process_next_path_step()
 	
 	# Move toward target if we have one
 	if is_moving:
@@ -692,27 +674,41 @@ func _physics_process(delta):
 		var distance = position.distance_to(target_position)
 		
 		if distance < MOVE_SPEED * delta:
-			# Before snapping, check if target tile is still unoccupied
-			var target_occupied = false
+			# Before snapping, check if target tile is still valid
+			var target_valid = true
+			
+			# ABSOLUTE RULE: Check if target tile is walkable
+			if world != null and world.has_method("is_walkable"):
+				if not world.is_walkable(target_position):
+					target_valid = false
 			
 			# Check if player is on the target tile
-			if player != null and target_position.distance_to(player.position) < TILE_SIZE:
-				target_occupied = true
+			if target_valid and player != null and target_position.distance_to(player.position) < TILE_SIZE:
+				target_valid = false
 			
 			# Check if another orc is on the target tile
-			if not target_occupied and is_tile_occupied_by_enemy(target_position):
-				target_occupied = true
+			if target_valid and is_tile_occupied_by_enemy(target_position):
+				target_valid = false
 			
-			if not target_occupied:
+			if target_valid:
 				# Snap to target when close enough
 				position = target_position
+				
+				# ABSOLUTE RULE: Verify current position is walkable after snap
+				if world != null and world.has_method("is_walkable"):
+					if not world.is_walkable(position):
+						# Something went wrong - we're on water! Emergency recalculation
+						is_moving = false
+						path_queue.clear()
+						chase_path_timer = chase_update_interval
+						return
+				
 				is_moving = false
 				# Process next step in path
-				process_orc_next_path_step()
+				process_next_path_step()
 			else:
-				# Target tile is now occupied, stop moving and pick a new direction
+				# Target tile is invalid, stop moving
 				is_moving = false
-				print("[ORC_COLLISION] Target tile occupied at ", target_position, ", stopping movement")
 		else:
 			# Move smoothly towards target
 			position += direction * MOVE_SPEED * delta
@@ -724,23 +720,27 @@ func _physics_process(delta):
 			if animated_sprite.animation != anim_name:
 				animated_sprite.play(anim_name)
 	else:
-		# Not moving - check if we're in attack range or try to move to next waypoint
+		# Not moving - check if we should animate or move to next waypoint
 		if targeted_enemy != null:
 			var distance_to_target = position.distance_to(targeted_enemy.position)
-			# If adjacent to target, play idle animation (we're attacking)
+			# If adjacent to target, play idle animation (we're in surrounding behavior attacking)
 			if distance_to_target < TILE_SIZE * 1.5:
 				var dir_name = get_direction_name(current_direction)
 				if animated_sprite != null and animated_sprite.sprite_frames != null:
 					var anim_name = "idle_" + dir_name
 					if animated_sprite.animation != anim_name:
 						animated_sprite.play(anim_name)
+			# Try to move to next waypoint in path
+			elif path_queue.size() > 0:
+				process_next_path_step()
 			# If we have no path, move directly toward the player as fallback
-			elif chase_path.size() == 0:
+			elif path_queue.size() == 0:
 				var direction_to_player = (targeted_enemy.position - position).normalized()
 				
 				# Find the best direction, with strong preference for current direction
 				var best_direction = Vector2.DOWN
 				var best_dot = -2.0
+				var best_valid = false
 				
 				# Check 8 directions (4 cardinal + 4 diagonal) for better pathfinding
 				var directions_to_check = [
@@ -750,6 +750,17 @@ func _physics_process(delta):
 				]
 				
 				for dir in directions_to_check:
+					# ABSOLUTE RULE: Only consider directions toward walkable tiles
+					var test_tile = position + dir.normalized() * TILE_SIZE
+					var test_tile_x = round(test_tile.x / TILE_SIZE)
+					var test_tile_y = round(test_tile.y / TILE_SIZE)
+					var test_tile_center = Vector2(test_tile_x * TILE_SIZE + TILE_SIZE / 2, test_tile_y * TILE_SIZE + TILE_SIZE / 2)
+					
+					# Skip non-walkable directions immediately
+					if world != null and world.has_method("is_walkable"):
+						if not world.is_walkable(test_tile_center):
+							continue  # Skip this direction - it's water or unwalkable
+					
 					var dot = direction_to_player.dot(dir)
 					# Strong hysteresis: prefer current direction to reduce jitter
 					var adjusted_dot = dot
@@ -763,60 +774,61 @@ func _physics_process(delta):
 					if adjusted_dot > best_dot:
 						best_dot = adjusted_dot
 						best_direction = dir
+						best_valid = true
 				
-				var next_tile = position + best_direction.normalized() * TILE_SIZE
-				
-				# Check if the next tile is walkable
-				var can_move = true
-				if world != null and world.has_method("is_walkable"):
-					# Snap to tile center before checking walkability
-					var check_tile_x = round(next_tile.x / TILE_SIZE)
-					var check_tile_y = round(next_tile.y / TILE_SIZE)
-					var check_tile_center = Vector2(check_tile_x * TILE_SIZE + TILE_SIZE / 2, check_tile_y * TILE_SIZE + TILE_SIZE / 2)
-					if not world.is_walkable(check_tile_center):
-						can_move = false
-				
-				# Check if the next tile is occupied by the player
-				if can_move and player != null and next_tile.distance_to(player.position) < TILE_SIZE:
-					# Player is on that tile, can't move there
-					can_move = false
-				
-				# Check if the next tile is occupied by another orc
-				if can_move and is_tile_occupied_by_enemy(next_tile):
-					# Another orc is on that tile, can't move there
-					can_move = false
-				
-				if can_move:
-					# Snap to tile center to ensure proper grid alignment
-					var tile_x = floor(next_tile.x / TILE_SIZE)
-					var tile_y = floor(next_tile.y / TILE_SIZE)
-					var snapped_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE / 2, tile_y * TILE_SIZE + TILE_SIZE / 2)
-					# ABSOLUTE RULE: Double-check this tile is walkable before moving to it
+				# Only attempt movement if we found a valid direction
+				if best_valid:
+					var next_tile = position + best_direction.normalized() * TILE_SIZE
+					
+					# Check if the next tile is walkable (redundant check but safety first)
+					var can_move = true
 					if world != null and world.has_method("is_walkable"):
-						if not world.is_walkable(snapped_center):
-							can_move = false  # Reject this fallback direction
-					# Double-check no entity is occupying this tile
-					if can_move:
-						if player != null and snapped_center.distance_to(player.position) < TILE_SIZE:
+						# Snap to tile center before checking walkability
+						var check_tile_x = round(next_tile.x / TILE_SIZE)
+						var check_tile_y = round(next_tile.y / TILE_SIZE)
+						var check_tile_center = Vector2(check_tile_x * TILE_SIZE + TILE_SIZE / 2, check_tile_y * TILE_SIZE + TILE_SIZE / 2)
+						if not world.is_walkable(check_tile_center):
 							can_move = false
-						elif is_tile_occupied_by_enemy(snapped_center):
-							can_move = false
+					
+					# Check if the next tile is occupied by the player
+					if can_move and player != null and next_tile.distance_to(player.position) < TILE_SIZE:
+						# Player is on that tile, can't move there
+						can_move = false
+					
+					# Check if the next tile is occupied by another orc
+					if can_move and is_tile_occupied_by_enemy(next_tile):
+						# Another orc is on that tile, can't move there
+						can_move = false
+					
 					if can_move:
-						target_position = snapped_center
-						# For diagonal movement, convert to cardinal direction for animation
-						var dx = sign(best_direction.x)
-						var dy = sign(best_direction.y)
-						var diagonal_direction = Vector2(dx, dy)
-						# Only update facing if the diagonal direction actually changed
-						if diagonal_direction != last_fallback_direction:
-							last_fallback_direction = diagonal_direction
-							var new_direction = calculate_direction(int(dx), int(dy))
-							current_direction = new_direction
-						is_moving = true
-			else:
-				process_orc_next_path_step()
+						# Snap to tile center to ensure proper grid alignment
+						var tile_x = floor(next_tile.x / TILE_SIZE)
+						var tile_y = floor(next_tile.y / TILE_SIZE)
+						var snapped_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE / 2, tile_y * TILE_SIZE + TILE_SIZE / 2)
+						# ABSOLUTE RULE: Triple-check this tile is walkable before moving to it
+						if world != null and world.has_method("is_walkable"):
+							if not world.is_walkable(snapped_center):
+								can_move = false  # Reject this fallback direction
+						# Double-check no entity is occupying this tile
+						if can_move:
+							if player != null and snapped_center.distance_to(player.position) < TILE_SIZE:
+								can_move = false
+							elif is_tile_occupied_by_enemy(snapped_center):
+								can_move = false
+						if can_move:
+							target_position = snapped_center
+							# For diagonal movement, convert to cardinal direction for animation
+							var dx = sign(best_direction.x)
+							var dy = sign(best_direction.y)
+							var diagonal_direction = Vector2(dx, dy)
+							# Only update facing if the diagonal direction actually changed
+							if diagonal_direction != last_fallback_direction:
+								last_fallback_direction = diagonal_direction
+								var new_direction = calculate_direction(int(dx), int(dy))
+								current_direction = new_direction
+							is_moving = true
 		else:
-			# Idle animation
+			# No target - idle animation
 			var dir_name = get_direction_name(current_direction)
 			if animated_sprite != null and animated_sprite.sprite_frames != null:
 				var anim_name = "idle_" + dir_name
@@ -828,15 +840,14 @@ func _physics_process(delta):
 	z_index = clampi(int(position.y / 10) + 1000, 0, 10000)
 
 
-func process_orc_next_path_step():
-	"""Process the next step in the orc's chase path.
-	This mirrors the player's process_next_path_step() logic to ensure
-	consistent movement and animation behavior."""
-	if targeted_enemy == null or chase_path.size() == 0:
+func process_next_path_step():
+	"""Process the next step in the path_queue.
+	Mirrors the player's movement logic for consistency."""
+	if path_queue.size() == 0:
 		return
 	
-	# Get next waypoint
-	var next_waypoint = chase_path[0]
+	# Get next waypoint WITHOUT removing it yet
+	var next_waypoint = path_queue[0]
 	
 	# Calculate movement direction
 	var raw_direction = next_waypoint - position
@@ -852,26 +863,54 @@ func process_orc_next_path_step():
 			current_direction = new_direction
 		last_path_direction = tile_offset
 	
-	# ABSOLUTE RULE: Never initiate movement onto a water tile
+	# ABSOLUTE RULE: Check if target tile is walkable BEFORE moving
+	# Apply the same feet offset that pathfinding uses for consistency
 	if world != null and world.has_method("is_walkable"):
-		if not world.is_walkable(next_waypoint):
-			# Cannot move to this waypoint, it's not walkable (water)
-			# Remove from path and try next one
-			chase_path.pop_front()
+		var feet_offset = Vector2(0, TILE_SIZE / 2)
+		var feet_position = next_waypoint + feet_offset
+		var tile_x = floor(feet_position.x / TILE_SIZE)
+		var tile_y = floor(feet_position.y / TILE_SIZE)
+		var tile_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
+		
+		if not world.is_walkable(tile_center):
+			# Cannot move to this waypoint - the pathfinding returned a bad path
+			# Skip this waypoint and try the next one
+			path_queue.pop_front()
+			# Try the next waypoint immediately
+			if path_queue.size() > 0:
+				process_next_path_step()
+			else:
+				# No more waypoints, recalculate path IMMEDIATELY instead of waiting
+				var start_tile_center = (position / TILE_SIZE).round() * TILE_SIZE + Vector2(TILE_SIZE * 0.5, TILE_SIZE * 0.5)
+				var target_tile_center = (player.position / TILE_SIZE).round() * TILE_SIZE + Vector2(TILE_SIZE * 0.5, TILE_SIZE * 0.5)
+				var new_path = find_path(start_tile_center, target_tile_center)
+				# A* already filtered water during pathfinding
+				path_queue = new_path
+				if path_queue.size() > 0:
+					process_next_path_step()
 			return
 	
 	# Check if another orc is occupying this tile
 	if is_tile_occupied_by_enemy(next_waypoint):
-		# Cannot move to this waypoint, another orc is there
-		# Remove from path and try next one
-		chase_path.pop_front()
+		# Cannot move to this waypoint - force immediate path recalculation
+		# Clear path queue since this path is blocked
+		path_queue.clear()
+		# Recalculate path immediately instead of waiting
+		var start_tile_center = (position / TILE_SIZE).round() * TILE_SIZE + Vector2(TILE_SIZE * 0.5, TILE_SIZE * 0.5)
+		var target_tile_center = (player.position / TILE_SIZE).round() * TILE_SIZE + Vector2(TILE_SIZE * 0.5, TILE_SIZE * 0.5)
+		var new_path = find_path(start_tile_center, target_tile_center)
+		# A* already filtered water during pathfinding
+		path_queue = new_path
+		if path_queue.size() > 0:
+			process_next_path_step()
 		return
+	
+	# Now that we've validated the waypoint, remove it from the queue
+	path_queue.pop_front()
 	
 	# Set target and begin movement
 	target_position = next_waypoint
 	is_moving = true
-	chase_path_index = 0
-	chase_path.pop_front()  # Remove the waypoint we're moving to
 
 
 func calculate_direction(dx: int, dy: int) -> Vector2:
@@ -924,105 +963,11 @@ func is_tile_occupied_by_enemy(tile_pos: Vector2) -> bool:
 	return false
 
 func find_path(start: Vector2, goal: Vector2) -> Array:
-	if start == goal:
-		return []
-	
-	# Check if goal is walkable
-	if world and world.has_method("is_walkable"):
-		if not world.is_walkable(goal):
-			return []
-	
-	# A* pathfinding
-	var open_set = [start]
-	var came_from = {}
-	var g_score = {start: 0}
-	var f_score = {start: heuristic(start, goal)}
-	var closed_set = {}
-	var iterations = 0
-	var max_iterations = 5000  # Reduced to improve performance - use fallback for long paths
-	
-	while open_set.size() > 0 and iterations < max_iterations:
-		iterations += 1
-		# Find node with lowest f_score
-		var current = open_set[0]
-		var current_f = f_score.get(current, INF)
-		for node in open_set:
-			var node_f = f_score.get(node, INF)
-			if node_f < current_f:
-				current = node
-				current_f = node_f
-		
-		# Reached goal
-		if current == goal:
-			var path = reconstruct_path(came_from, current)
-			return path
-		
-		open_set.erase(current)
-		closed_set[current] = true
-		
-		# Check all neighbors
-		var neighbors = get_neighbors(current)
-		for neighbor in neighbors:
-			if neighbor in closed_set:
-				continue
-			
-			# Check walkability
-			if world and world.has_method("is_walkable"):
-				if not world.is_walkable(neighbor):
-					continue
-			
-			# Check if player is occupying this tile
-			if player != null and neighbor.distance_to(player.position) < TILE_SIZE:
-				continue
-			
-			# Check if another orc is occupying this tile
-			if is_tile_occupied_by_enemy(neighbor):
-				continue
-			
-			# Calculate tentative g_score
-			var tentative_g = g_score.get(current, INF) + current.distance_to(neighbor)
-			
-			if tentative_g < g_score.get(neighbor, INF):
-				came_from[neighbor] = current
-				g_score[neighbor] = tentative_g
-				f_score[neighbor] = tentative_g + heuristic(neighbor, goal)
-				
-				if not neighbor in open_set:
-					open_set.append(neighbor)
-	
+	"""Call the world's shared pathfinding function.
+	This ensures orcs use identical pathfinding logic to the player."""
+	if world != null and world.has_method("find_path"):
+		return world.find_path(start, goal, self)
 	return []
-
-func get_neighbors(tile_center: Vector2) -> Array:
-	var neighbors = []
-	var tile_x = floor(tile_center.x / TILE_SIZE)
-	var tile_y = floor(tile_center.y / TILE_SIZE)
-	
-	var directions = [
-		Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0), Vector2(0, -1),
-		Vector2(1, 1), Vector2(-1, 1), Vector2(-1, -1), Vector2(1, -1)
-	]
-	
-	for dir in directions:
-		var neighbor_x = tile_x + dir.x
-		var neighbor_y = tile_y + dir.y
-		var neighbor_center = Vector2(neighbor_x * TILE_SIZE + TILE_SIZE/2, neighbor_y * TILE_SIZE + TILE_SIZE/2)
-		neighbors.append(neighbor_center)
-	
-	return neighbors
-
-func heuristic(a: Vector2, b: Vector2) -> float:
-	var dx = abs(a.x - b.x) / TILE_SIZE
-	var dy = abs(a.y - b.y) / TILE_SIZE
-	var D = TILE_SIZE
-	var D2 = sqrt(2) * TILE_SIZE
-	return D * max(dx, dy) + (D2 - D) * min(dx, dy)
-
-func reconstruct_path(came_from: Dictionary, current: Vector2) -> Array:
-	var path = [current]
-	while current in came_from:
-		current = came_from[current]
-		path.insert(0, current)
-	return path
 
 func _draw():
 	# Draw red border around the sprite when targeted
@@ -1045,8 +990,6 @@ func perform_attack():
 	var target_health = targeted_enemy.get_meta("current_health")
 	target_health -= damage
 	targeted_enemy.set_meta("current_health", target_health)
-	
-	print("[ORC_ATTACK] Orc dealt ", damage, " damage to Player. HP: ", target_health, "/", targeted_enemy.get_meta("max_health"))
 	
 	# Trigger health bar redraw
 	if targeted_enemy.has_node("HealthBar"):
@@ -1078,7 +1021,6 @@ func die():
 			# Fallback to parent if world not found
 			parent.add_child(dead_body)
 	
-	print("[ORC_DIE] Orc died at position ", position)
 	
 	# Remove the orc from the scene
 	queue_free()

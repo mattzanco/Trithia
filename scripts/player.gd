@@ -1264,11 +1264,8 @@ func move_to_position(target: Vector2):
 	var clicked_tile_y = floor(target.y / TILE_SIZE)
 	var clicked_tile_center = Vector2(clicked_tile_x * TILE_SIZE + TILE_SIZE/2, clicked_tile_y * TILE_SIZE + TILE_SIZE/2)
 	
-	print("[MOVE_TO] Clicked at world pos ", target, " (tile: ", clicked_tile_x, ",", clicked_tile_y, ") center: ", clicked_tile_center)
-	
 	var parent = get_parent()
 	if not parent:
-		print("[MOVE_TO] ERROR: No parent!")
 		return
 	
 	var world = parent.get_node_or_null("World")
@@ -1276,15 +1273,11 @@ func move_to_position(target: Vector2):
 	# Check if clicked tile is walkable
 	if world and world.has_method("is_walkable"):
 		if not world.is_walkable(clicked_tile_center):
-			print("[MOVE_TO] Target tile not walkable")
 			return  # Can't walk there
 	
 	# Check if position is occupied by another entity
 	if is_position_occupied(clicked_tile_center):
-		print("[COLLISION] Target tile occupied at ", clicked_tile_center, ", cannot move")
 		return  # Can't walk there, occupied
-	else:
-		print("[PATHFIND] Target tile at ", clicked_tile_center, " is free, proceeding with pathfinding")
 	
 	# Get current tile
 	var current_tile_x = floor(position.x / TILE_SIZE)
@@ -1297,7 +1290,6 @@ func move_to_position(target: Vector2):
 	
 	# If clicking on current tile, do nothing (don't change facing)
 	if current_tile_center == target_tile_center:
-		print("[MOVE_TO] Already at target tile")
 		return
 	
 	# Find path using A* pathfinding
@@ -1307,173 +1299,35 @@ func move_to_position(target: Vector2):
 		# Remove first position (current position)
 		path.remove_at(0)
 		path_queue = path
-		print("[MOVE_TO] Path found with ", path.size(), " waypoints")
 		# Start moving to first waypoint
 		process_next_path_step()
 	elif path.size() == 1 and current_tile_center == target_tile_center:
 		# Already at destination
-		print("[MOVE_TO] Already at destination")
 		return
 	elif path.size() == 0:
 		# No path found - try direct movement if adjacent
 		var dist = current_tile_center.distance_to(target_tile_center)
 		if dist <= TILE_SIZE * 1.5:  # Adjacent tile (including diagonal)
-			print("[MOVE_TO] Direct movement to adjacent tile")
 			path_queue = [target_tile_center]
 			process_next_path_step()
-		else:
-			print("[MOVE_TO] No path found and target not adjacent")
-	else:
-		print("[MOVE_TO] Unexpected path size: ", path.size())
 
 func find_path(start: Vector2, goal: Vector2) -> Array:
+	"""Call the world's shared pathfinding function.
+	This ensures consistent pathfinding for both player and orcs."""
 	var parent = get_parent()
 	if not parent:
-		print("[PATHFIND] ERROR: No parent!")
 		return []
 	
 	var world = parent.get_node_or_null("World")
-	
-	# If no world or clicked on current tile, return empty path
 	if not world:
-		print("[PATHFIND] ERROR: No world found!")
 		return []
 	
-	if start == goal:
-		print("[PATHFIND] Start equals goal, returning empty path")
-		return []
+	if world.has_method("find_path"):
+		return world.find_path(start, goal, self)
 	
-	# Check if goal is walkable (apply feet offset)
-	if world.has_method("is_walkable"):
-		var feet_offset = Vector2(0, TILE_SIZE / 2)
-		var goal_feet = goal + feet_offset
-		var goal_tile_x = floor(goal_feet.x / TILE_SIZE)
-		var goal_tile_y = floor(goal_feet.y / TILE_SIZE)
-		var goal_tile_center = Vector2(goal_tile_x * TILE_SIZE + TILE_SIZE/2, goal_tile_y * TILE_SIZE + TILE_SIZE/2)
-		if not world.is_walkable(goal_tile_center):
-			print("[PATHFIND] Goal is not walkable")
-			return []
-	
-	# A* pathfinding
-	var open_set = [start]
-	var came_from = {}
-	var g_score = {start: 0}
-	var f_score = {start: heuristic(start, goal)}
-	var closed_set = {}  # Track visited nodes for efficiency
-	var iterations = 0
-	var max_iterations = 50000  # Increased limit for longer paths
-	
-	while open_set.size() > 0 and iterations < max_iterations:
-		iterations += 1
-		# Find node with lowest f_score (with tiebreaker for better paths)
-		var current = open_set[0]
-		var current_f = f_score.get(current, INF)
-		var current_h = heuristic(current, goal)
-		for node in open_set:
-			var node_f = f_score.get(node, INF)
-			if node_f < current_f:
-				current = node
-				current_f = node_f
-				current_h = heuristic(node, goal)
-			elif abs(node_f - current_f) < 0.01:  # Tie-breaking: prefer node closer to goal
-				var node_h = heuristic(node, goal)
-				if node_h < current_h:
-					current = node
-					current_f = node_f
-					current_h = node_h
-		
-		# Reached goal
-		if current == goal:
-			return reconstruct_path(came_from, current)
-		
-		open_set.erase(current)
-		closed_set[current] = true
-		
-		# Check all neighbors (8 directions)
-		var neighbors = get_neighbors(current)
-		for neighbor in neighbors:
-			# Skip if already fully evaluated
-			if neighbor in closed_set:
-				continue
-			
-			# Skip if not walkable (apply feet offset)
-			if world and world.has_method("is_walkable"):
-				var feet_offset = Vector2(0, TILE_SIZE / 2)
-				var feet_position = neighbor + feet_offset
-				var tile_x = floor(feet_position.x / TILE_SIZE)
-				var tile_y = floor(feet_position.y / TILE_SIZE)
-				var tile_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
-				
-				if not world.is_walkable(tile_center):
-					continue
-			
-			# Skip if occupied by entity (strict check - only exact tile)
-			if is_position_occupied_strict(neighbor):
-				continue
-			
-			# Calculate tentative g_score
-			var tentative_g = g_score.get(current, INF) + current.distance_to(neighbor)
-			
-			if tentative_g < g_score.get(neighbor, INF):
-				came_from[neighbor] = current
-				g_score[neighbor] = tentative_g
-				# Prefer diagonal movement by reducing its effective cost
-				var move_dir = (neighbor - current).normalized()
-				var is_diagonal = abs(move_dir.x) > 0.5 and abs(move_dir.y) > 0.5
-				var diagonal_bonus = -3.0 if is_diagonal else 0.0
-				f_score[neighbor] = tentative_g + heuristic(neighbor, goal) + diagonal_bonus
-				
-				if not neighbor in open_set:
-					open_set.append(neighbor)
-	
-	# No path found
-	if iterations >= max_iterations:
-		print("Pathfinding exceeded max iterations (", max_iterations, "). Path may be too complex.")
-	else:
-		print("No path found from ", start, " to ", goal)
 	return []
 
-func get_neighbors(tile_center: Vector2) -> Array:
-	var neighbors = []
-	var world = get_parent().get_node_or_null("World")
-	
-	# Get center tile coordinates
-	var tile_x = floor(tile_center.x / TILE_SIZE)
-	var tile_y = floor(tile_center.y / TILE_SIZE)
-	
-	# 8 directions (interleave cardinal and diagonal for fair evaluation)
-	var directions = [
-		Vector2(1, 0), Vector2(1, 1), Vector2(0, 1), Vector2(-1, 1),  
-		Vector2(-1, 0), Vector2(-1, -1), Vector2(0, -1), Vector2(1, -1)
-	]
-	
-	for dir in directions:
-		var neighbor_x = tile_x + dir.x
-		var neighbor_y = tile_y + dir.y
-		var neighbor_center = Vector2(neighbor_x * TILE_SIZE + TILE_SIZE/2, neighbor_y * TILE_SIZE + TILE_SIZE/2)
-		
-		# Check all neighbors - walkability is already enforced in main loop
-		neighbors.append(neighbor_center)
-	
-	return neighbors
 
-func heuristic(a: Vector2, b: Vector2) -> float:
-	# Diagonal distance heuristic (Chebyshev/Octile distance)
-	var dx = abs(a.x - b.x) / TILE_SIZE
-	var dy = abs(a.y - b.y) / TILE_SIZE
-	# Cost: D * max(dx, dy) + (D2 - D) * min(dx, dy)
-	# where D = cost of cardinal move, D2 = cost of diagonal move
-	# For us: D = TILE_SIZE, D2 = sqrt(2) * TILE_SIZE
-	var D = TILE_SIZE
-	var D2 = sqrt(2) * TILE_SIZE
-	return D * max(dx, dy) + (D2 - D) * min(dx, dy)
-
-func reconstruct_path(came_from: Dictionary, current: Vector2) -> Array:
-	var path = [current]
-	while current in came_from:
-		current = came_from[current]
-		path.insert(0, current)
-	return path
 
 func process_next_path_step():
 	if path_queue.size() > 0 and not is_moving:
