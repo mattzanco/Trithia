@@ -67,14 +67,7 @@ func _ready():
 	set_meta("dexterity", dexterity)
 	set_meta("speed", speed)
 	
-	# Debug: Print all children to verify orcs are present
-	var parent = get_parent()
-	if parent:
-		print("[PLAYER_READY] Children of ", parent.name, ":")
-		for child in parent.get_children():
-			print("  - ", child.name, " (", child.get_class(), ")")
-			if child.name == "Orc":
-				print("    Orc position: ", child.position)
+	# Player initialization complete
 
 func _process(_delta):
 	# Update attack cooldown
@@ -1744,12 +1737,8 @@ func is_position_occupied(target_position: Vector2) -> bool:
 				# Prevent occupying same tile - use stricter collision
 				var is_colliding = distance < TILE_SIZE
 				if is_colliding:
-					print("[COLLISION CHECK] Target: ", target_position, " vs Orc #", orc_count, " at ", child.position, " Distance: ", distance, " BLOCKED: true")
 					return true
-		if orc_count > 0:
-			print("[COLLISION CHECK] Target: ", target_position, " - checked ", orc_count, " orcs, no collision")
-		else:
-			print("[COLLISION CHECK] Target: ", target_position, " - NO ORCS FOUND!")
+
 	
 	return false
 

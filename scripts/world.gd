@@ -60,14 +60,12 @@ func _ready():
 	update_world(Vector2.ZERO)
 
 func _process(_delta):
-	# Redraw if terrain data changed
-	if terrain_data.size() != last_drawn_count:
-		last_drawn_count = terrain_data.size()
-		queue_redraw()
-	
 	# Accumulate time for water animation
 	time_passed += _delta
-	queue_redraw()  # Continuously redraw for animation
+	# Only redraw when terrain changes or periodically for water animation
+	if terrain_data.size() != last_drawn_count or fmod(time_passed, 0.1) < _delta:
+		last_drawn_count = terrain_data.size()
+		queue_redraw()
 
 func update_world(player_position: Vector2):
 	# Calculate which chunk the player is in
