@@ -726,12 +726,15 @@ func _physics_process(delta):
 			# Update the tracked player tile position
 			last_player_tile_position = current_player_tile
 			
-			var distance_to_player = position.distance_to(targeted_enemy.position)
-			
-			# RULE: If already adjacent to player, don't recalculate path
-			# This prevents orcs from moving away when they should be surrounding
-			if distance_to_player >= TILE_SIZE * 1.5:
-				# Snap current position and target position to tile centers
+			# Always recalculate when player moves (whether far or adjacent)
+			# This ensures magnetic following behavior when in surrounding mode
+			# Only recalculate when orc is stationary
+			# Never touch the path while moving to prevent any snap-back or interruption
+			if not is_moving:
+				# Clear old waypoints
+				path_queue.clear()
+				
+				# Calculate from current position
 				var start_tile_x = round(position.x / TILE_SIZE)
 				var start_tile_y = round(position.y / TILE_SIZE)
 				var start_tile_center = Vector2(start_tile_x * TILE_SIZE + TILE_SIZE/2, start_tile_y * TILE_SIZE + TILE_SIZE/2)
@@ -745,16 +748,40 @@ func _physics_process(delta):
 				# Calculate new path to player's current position
 				var new_path = find_path(start_tile_center, target_tile_center)
 				
-				# Use the fresh path directly - no preservation of old waypoints
-				# This ensures orcs always take the most direct route
+				# Remove the starting position if it's in the path
+				if new_path.size() > 0 and new_path[0].distance_to(position) < TILE_SIZE * 0.5:
+					new_path.pop_front()
+				
+				# Update path and start movement
 				path_queue = new_path
+				if path_queue.size() > 0:
+					process_next_path_step()
+		
+		# ALSO recalculate if orc is stopped with no path but player is still far away
+		# This ensures continuous chasing even when player is stationary
+		if not is_moving and path_queue.size() == 0 and targeted_enemy != null:
+			var distance_to_player = position.distance_to(targeted_enemy.position)
+			if distance_to_player >= TILE_SIZE * 1.5:
+				# Calculate from current position
+				var start_tile_x = round(position.x / TILE_SIZE)
+				var start_tile_y = round(position.y / TILE_SIZE)
+				var start_tile_center = Vector2(start_tile_x * TILE_SIZE + TILE_SIZE/2, start_tile_y * TILE_SIZE + TILE_SIZE/2)
 				
-				# Remove the starting position if it's in the path and we're already on it
-				if path_queue.size() > 0 and path_queue[0].distance_to(position) < TILE_SIZE * 0.1:
-					path_queue.pop_front()
+				# Target the player's tile
+				var target_tile_x = floor(targeted_enemy.position.x / TILE_SIZE)
+				var target_tile_y = floor(targeted_enemy.position.y / TILE_SIZE)
+				var target_tile_center = Vector2(target_tile_x * TILE_SIZE + TILE_SIZE/2, target_tile_y * TILE_SIZE + TILE_SIZE/2)
+			
+				# Calculate new path
+				var new_path = find_path(start_tile_center, target_tile_center)
 				
-				# Start moving on the new path if not already moving and we have waypoints
-				if path_queue.size() > 0 and not is_moving:
+				# Remove the starting position if it's in the path
+				if new_path.size() > 0 and new_path[0].distance_to(position) < TILE_SIZE * 0.5:
+					new_path.pop_front()
+				
+				# Update path and start movement
+				path_queue = new_path
+				if path_queue.size() > 0:
 					process_next_path_step()
 	
 	# Move toward target if we have one

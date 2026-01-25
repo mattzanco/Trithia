@@ -298,11 +298,8 @@ func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 			if tentative_g < g_score.get(neighbor, INF):
 				came_from[neighbor] = current
 				g_score[neighbor] = tentative_g
-				# Prefer diagonal movement by reducing its effective cost
-				var move_dir = (neighbor - current).normalized()
-				var is_diagonal = abs(move_dir.x) > 0.5 and abs(move_dir.y) > 0.5
-				var diagonal_bonus = -3.0 if is_diagonal else 0.0
-				f_score[neighbor] = tentative_g + heuristic(neighbor, goal) + diagonal_bonus
+				# Use straight heuristic without bonuses for most direct paths
+				f_score[neighbor] = tentative_g + heuristic(neighbor, goal)
 				
 				if not neighbor in open_set:
 					open_set.append(neighbor)
