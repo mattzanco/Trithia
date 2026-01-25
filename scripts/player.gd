@@ -1780,6 +1780,15 @@ func die():
 		else:
 			# Fallback to parent if world not found
 			parent.add_child(dead_body)
+		
+		# Move the camera to the dead body so it stays centered on it
+		var camera = $Camera2D
+		if camera:
+			# Remove camera from player and add it to parent so it survives player deletion
+			remove_child(camera)
+			parent.add_child(camera)
+			# Position camera at dead body location
+			camera.global_position = dead_body.global_position
 	
 	# Remove the player sprite and show game over screen
 	queue_free()
