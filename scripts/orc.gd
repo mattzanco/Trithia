@@ -19,6 +19,11 @@ var patrol_direction = Vector2.ZERO
 var player = null
 var world = null
 
+# Health system
+var max_health = 50
+var current_health = 50
+var health_bar = null
+
 func _ready():
 	# Get the AnimatedSprite2D node
 	animated_sprite = $AnimatedSprite2D
@@ -64,6 +69,16 @@ func _ready():
 		print("Orc animation started")
 	else:
 		print("ERROR: sprite_frames is null after create_orc_animations!")
+	
+	# Setup health and health bar
+	current_health = max_health
+	set_meta("max_health", max_health)
+	set_meta("current_health", current_health)
+	
+	# Create health bar
+	var health_bar_scene = preload("res://scenes/health_bar.tscn")
+	health_bar = health_bar_scene.instantiate()
+	add_child(health_bar)
 
 func create_orc_animations():
 	var sprite_frames = SpriteFrames.new()

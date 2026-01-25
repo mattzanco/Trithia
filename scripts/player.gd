@@ -15,6 +15,11 @@ var last_input_direction = Vector2.ZERO  # Track previous frame's input directio
 var last_path_direction = Vector2.ZERO  # Track previous pathfinding step's direction
 var orc_reference: Node = null  # Cache orc reference
 
+# Health system
+var max_health = 100
+var current_health = 100
+var health_bar = null
+
 func _ready():
 	# Create animated sprite with walking animations
 	create_player_animations()
@@ -28,6 +33,16 @@ func _ready():
 	
 	# Start with idle animation
 	animated_sprite.play("idle_down")
+	
+	# Setup health and health bar
+	current_health = max_health
+	set_meta("max_health", max_health)
+	set_meta("current_health", current_health)
+	
+	# Create health bar
+	var health_bar_scene = preload("res://scenes/health_bar.tscn")
+	health_bar = health_bar_scene.instantiate()
+	add_child(health_bar)
 
 func _process(_delta):
 	# Look for orc reference if we don't have it yet
