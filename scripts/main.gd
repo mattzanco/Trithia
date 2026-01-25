@@ -115,18 +115,16 @@ func show_game_over():
 	canvas_layer.layer = 100
 	add_child(canvas_layer)
 	
-	# Create a Label for death message
-	var game_over_label = Label.new()
-	game_over_label.text = "You Have Died"
-	game_over_label.add_theme_font_size_override("font_size", 96)
+	# Create a Control node with the death screen script
+	var death_screen = Control.new()
+	var death_screen_script = load("res://scripts/death_screen.gd")
+	death_screen.set_script(death_screen_script)
 	
-	# Add the label to the canvas layer
-	canvas_layer.add_child(game_over_label)
+	# Add the death screen to the canvas layer
+	canvas_layer.add_child(death_screen)
 	
-	# Position the label at the center of the screen using position
-	var viewport_size = get_viewport().get_visible_rect().size
-	game_over_label.position = viewport_size / 2
-	game_over_label.pivot_offset = game_over_label.size / 2
+	# Make the control node fill the viewport
+	death_screen.anchors_preset = Control.PRESET_FULL_RECT
 	
 	print("[GAME_OVER] Game over screen displayed")
 
