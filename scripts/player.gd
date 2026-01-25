@@ -1756,7 +1756,13 @@ func is_position_occupied_strict(target_position: Vector2) -> bool:
 	return false
 
 func die():
-	# Player died - this would be expanded later with death animation, respawn, etc.
+	# Player died - show game over screen
 	print("[PLAYER_DIE] Player died at position ", position)
+	
+	# Get the main scene to show game over UI
+	var main = get_parent()
+	if main and main.has_method("show_game_over"):
+		main.show_game_over()
+	
 	# For now, just remove the player
 	queue_free()

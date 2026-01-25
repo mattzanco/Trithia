@@ -717,11 +717,21 @@ func _physics_process(delta):
 				
 				var next_tile = position + best_direction * TILE_SIZE
 				
+				# Check if the next tile is walkable
+				var can_move = true
+				if world != null and world.has_method("is_walkable"):
+					var feet_tile = next_tile + Vector2(0, TILE_SIZE / 2)
+					if not world.is_walkable(feet_tile):
+						print("[ORC_UNWALKABLE] Tile at ", next_tile, " is not walkable")
+						can_move = false
+				
 				# Check if the next tile is occupied by the player
-				if player != null and next_tile.distance_to(player.position) < TILE_SIZE:
+				if can_move and player != null and next_tile.distance_to(player.position) < TILE_SIZE:
 					# Player is on that tile, can't move there
 					print("[ORC_BLOCKED] Player blocking tile at ", next_tile)
-				else:
+					can_move = false
+				
+				if can_move:
 					target_position = next_tile
 					current_direction = best_direction
 					is_moving = true

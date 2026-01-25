@@ -100,3 +100,37 @@ func update_depth_sorting():
 			# World=0, Player=1, Orc=2
 			move_child(player, 1)
 			move_child(orc, 2)
+
+
+func show_game_over():
+	# Disable the camera so it stops following the player
+	var player = get_node_or_null("Player")
+	if player:
+		var camera = player.get_node_or_null("Camera2D")
+		if camera:
+			camera.enabled = false
+	
+	# Create a CanvasLayer for the UI
+	var canvas_layer = CanvasLayer.new()
+	canvas_layer.layer = 100
+	add_child(canvas_layer)
+	
+	# Create a Label for "Game Over"
+	var game_over_label = Label.new()
+	game_over_label.text = "GAME OVER"
+	game_over_label.add_theme_font_size_override("font_size", 96)
+	
+	# Add the label to the canvas layer
+	canvas_layer.add_child(game_over_label)
+	
+	# Position the label at the center of the screen
+	var viewport_size = get_viewport().get_visible_rect().size
+	game_over_label.anchor_left = 0.5
+	game_over_label.anchor_top = 0.5
+	game_over_label.anchor_right = 0.5
+	game_over_label.anchor_bottom = 0.5
+	game_over_label.offset.x = -game_over_label.size.x / 2
+	game_over_label.offset.y = -game_over_label.size.y / 2
+	
+	print("[GAME_OVER] Game over screen displayed")
+
