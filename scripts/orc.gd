@@ -24,6 +24,7 @@ var chase_path = []  # Path to follow when chasing
 var chase_path_index = 0  # Current index in the path
 var last_player_position = Vector2.ZERO  # Track player position for smart path updates
 var last_path_direction = Vector2.ZERO  # Track direction to avoid flashing during movement
+var last_fallback_direction = Vector2.ZERO  # Track last fallback diagonal direction
 var move_direction = Vector2.DOWN  # Direction to move on current step
 
 # Health system
@@ -768,7 +769,12 @@ func _physics_process(delta):
 					# For diagonal movement, convert to cardinal direction for animation
 					var dx = sign(best_direction.x)
 					var dy = sign(best_direction.y)
-					current_direction = calculate_direction(int(dx), int(dy))
+					var diagonal_direction = Vector2(dx, dy)
+					# Only update facing if the diagonal direction actually changed
+					if diagonal_direction != last_fallback_direction:
+						last_fallback_direction = diagonal_direction
+						var new_direction = calculate_direction(int(dx), int(dy))
+						current_direction = new_direction
 					is_moving = true
 					print("[ORC_FALLBACK] Moving directly toward player at direction ", get_direction_name(current_direction))
 			else:
@@ -812,7 +818,8 @@ func process_orc_next_path_step():
 	if tile_offset != last_path_direction:
 		# Direction changed - calculate new facing
 		var new_direction = calculate_direction(int(dx), int(dy))
-		current_direction = new_direction
+		if new_direction != current_direction:
+			current_direction = new_direction
 		last_path_direction = tile_offset
 		print("[ORC_DIRECTION_CHANGE] New direction: ", get_direction_name(new_direction), " from tile_offset: ", tile_offset)
 	
