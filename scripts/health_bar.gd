@@ -9,6 +9,7 @@ var current_health = 100
 const BAR_WIDTH = 28
 const BAR_HEIGHT = 4
 const BAR_OFFSET_Y = -28
+const NAME_OFFSET_Y = -33
 
 func _ready():
 	# Get the parent character
@@ -38,6 +39,27 @@ func _process(_delta):
 				queue_redraw()
 
 func _draw():
+	# Draw character name above the health bar
+	if character:
+		var font = ThemeDB.fallback_font
+		var font_size = 11  # Medium font size
+		var name_text = character.name
+		var name_y = NAME_OFFSET_Y
+		
+		# Calculate text width to center it
+		var text_width = font.get_string_size(name_text, font_size).x
+		var text_x = -text_width / 3.0
+		
+		# Draw black outline by drawing text offset in multiple directions
+		var outline_offset = 1
+		for ox in range(-outline_offset, outline_offset + 1):
+			for oy in range(-outline_offset, outline_offset + 1):
+				if ox != 0 or oy != 0:  # Skip center
+					draw_string(font, Vector2(text_x + ox, name_y + oy), name_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
+		
+		# Draw white text on top
+		draw_string(font, Vector2(text_x, name_y), name_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
+	
 	# Draw black outline
 	var bar_pos = Vector2(-BAR_WIDTH / 2, BAR_OFFSET_Y)
 	var outline_width = 1
