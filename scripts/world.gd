@@ -232,7 +232,7 @@ func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 	var f_score = {start: heuristic(start, goal)}
 	var closed_set = {}
 	var iterations = 0
-	var max_iterations = 50000
+	var max_iterations = 1000  # Reduced from 50000 - pathfinding is fast enough for most cases
 	
 	while open_set.size() > 0 and iterations < max_iterations:
 		iterations += 1
@@ -284,11 +284,16 @@ func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 					continue
 			
 			# Check if occupied by another entity (not by requester itself)
-			if is_tile_occupied_by_other(neighbor, requester):
-				continue
+			# For pathfinding, allow paths through occupied tiles with a cost penalty
+			# This prevents orcs from getting completely stuck when near each other
+			var is_occupied = is_tile_occupied_by_other(neighbor, requester)
 			
 			# Calculate tentative g_score
 			var tentative_g = g_score.get(current, INF) + current.distance_to(neighbor)
+			
+			# Add cost penalty for occupied tiles, but don't block them completely
+			if is_occupied:
+				tentative_g += TILE_SIZE  # Small penalty for occupied tiles
 			
 			if tentative_g < g_score.get(neighbor, INF):
 				came_from[neighbor] = current
@@ -350,7 +355,9 @@ func is_tile_occupied_by_other(tile_position: Vector2, requester: Node) -> bool:
 			# Check if any other character is on this tile
 			if child is CharacterBody2D and child.has_method("get_position"):
 				var distance = tile_position.distance_to(child.position)
-				if distance < 5.0:  # Same tile with small tolerance
+				# Only consider a tile truly "occupied" if another entity is almost exactly on it
+				# This allows pathfinding to work when entities are close but not perfectly overlapped
+				if distance < TILE_SIZE * 0.2:  # ~6 pixels for TILE_SIZE=32
 					return true
 	
 	return false
