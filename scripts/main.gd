@@ -26,20 +26,45 @@ func _ready():
 	print("spawn_starting_orc() completed")
 
 func spawn_starting_orc():
-	# Spawn an orc 4 tiles down from the player (4 tiles south)
+	# Spawn an orc at a random walkable location away from the player
 	var player = $Player
+	var world = $World
 	var orc = ORC_SCENE.instantiate()
 	
-	# Player starts at tile (0, 0) center = (16, 16)
-	# 4 tiles down = 4 * 32 = 128 pixels down
-	var orc_position = player.position + Vector2(0, 4 * TILE_SIZE)
+	var orc_position = Vector2.ZERO
+	var attempts = 0
+	var max_attempts = 100
+	
+	# Keep trying to spawn on a walkable tile
+	while attempts < max_attempts:
+		# Random position within reasonable distance
+		var random_x = randi_range(-200, 200)
+		var random_y = randi_range(-200, 200)
+		var candidate_pos = player.position + Vector2(random_x, random_y)
+		
+		# Snap to tile center
+		var tile_x = round(candidate_pos.x / TILE_SIZE)
+		var tile_y = round(candidate_pos.y / TILE_SIZE)
+		candidate_pos = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
+		
+		# Check if the feet tile (lower tile) is walkable
+		var feet_tile = candidate_pos + Vector2(0, TILE_SIZE/2)
+		if world.is_walkable(feet_tile) and candidate_pos.distance_to(player.position) > TILE_SIZE * 2:
+			orc_position = candidate_pos
+			break
+		
+		attempts += 1
+	
+	# If we couldn't find a valid spawn after 100 attempts, use a safe fallback
+	if attempts >= max_attempts:
+		orc_position = player.position + Vector2(0, 4 * TILE_SIZE)
 	
 	print("Spawning orc...")
 	print("Player position: ", player.position)
 	print("Orc position: ", orc_position)
 	
 	orc.position = orc_position
-	# Add orc to Main node, positioned after World but before Player
+	# Add orc to Main node
 	add_child(orc)
 	# Index 0 = World, Index 1 = Player, so insert at index 2
 	move_child(orc, 1)  # Insert between World (0) and Player (2)

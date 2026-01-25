@@ -32,7 +32,7 @@ var speed = 8
 var targeted_enemy = null  # Reference to the currently targeted enemy
 
 # Combat system
-var attack_cooldown = 1.0  # Seconds between attacks
+var attack_cooldown = 1.5  # Seconds between attacks
 var attack_timer = 0.0  # Current attack cooldown timer
 
 func _ready():
@@ -1256,6 +1256,10 @@ func perform_attack(target: Node):
 		# Update target's health bar
 		if target.has_node("HealthBar"):
 			target.get_node("HealthBar").queue_redraw()
+		
+		# Check if enemy died
+		if new_hp <= 0 and target.has_method("die"):
+			target.die()
 
 func move_to_position(target: Vector2):
 	# Convert click position to tile coordinates (where we want feet to land)

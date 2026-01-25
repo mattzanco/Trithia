@@ -695,4 +695,29 @@ func _draw():
 		draw_line(rect_offset + Vector2(TILE_SIZE, TILE_SIZE), rect_offset + Vector2(0, TILE_SIZE), Color.RED, border_width)  # Bottom
 		draw_line(rect_offset, rect_offset + Vector2(0, TILE_SIZE), Color.RED, border_width)  # Left
 
+func die():
+	# Create a dead body visual at the orc's position
+	var dead_body = Node2D.new()
+	dead_body.position = position + Vector2(0, TILE_SIZE/2)  # Position at the feet tile
+	dead_body.z_index = 0  # On the ground, above terrain
+	
+	# Load and attach the dead body script
+	var dead_body_script = load("res://scripts/dead_body.gd")
+	dead_body.set_script(dead_body_script)
+	
+	# Add the dead body to the world node so it renders with terrain
+	var parent = get_parent()
+	if parent:
+		var world = parent.get_node_or_null("World")
+		if world:
+			world.add_child(dead_body)
+		else:
+			# Fallback to parent if world not found
+			parent.add_child(dead_body)
+	
+	print("[ORC_DIE] Orc died at position ", position)
+	
+	# Remove the orc from the scene
+	queue_free()
+
 
