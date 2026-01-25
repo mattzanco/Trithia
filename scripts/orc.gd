@@ -1306,8 +1306,8 @@ func perform_attack():
 	if targeted_enemy == null:
 		return
 	
-	# Roll to hit - base 70% hit chance modified by dexterity
-	var hit_chance = 70 + (dexterity * 2)  # Each point of dexterity adds 2% hit chance
+	# Roll to hit - base 30% hit chance modified by dexterity
+	var hit_chance = 30 + (dexterity * 1)  # Each point of dexterity adds 1% hit chance
 	var hit_roll = randi_range(1, 100)
 	
 	if hit_roll > hit_chance:
