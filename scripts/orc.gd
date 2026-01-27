@@ -670,6 +670,11 @@ func _physics_process(delta):
 			if world != null and world.has_method("is_walkable"):
 				if not world.is_walkable(target_position):
 					target_valid = false
+				
+				# Double-check: explicitly verify it's not water
+				if target_valid and world.has_method("get_terrain_at"):
+					if world.get_terrain_at(target_position) == "water":
+						target_valid = false
 			
 			# Check if player is on the target tile
 			if target_valid and player != null and target_position.distance_to(player.position) < TILE_SIZE * 0.6:
@@ -739,6 +744,10 @@ func find_and_move_to_nearest_adjacent_tile():
 		if not world.has_method("is_walkable") or not world.is_walkable(tile_center):
 			continue
 		
+		# Explicitly check if it's water
+		if world.has_method("get_terrain_at") and world.get_terrain_at(tile_center) == "water":
+			continue
+		
 		# Check if occupied by another orc
 		if is_tile_occupied_by_enemy(tile_center):
 			continue
@@ -782,6 +791,10 @@ func find_and_move_to_nearest_adjacent_tile():
 			
 			# Check if walkable
 			if world.has_method("is_walkable") and not world.is_walkable(next_tile_center):
+				continue
+			
+			# Explicitly check if it's water
+			if world.has_method("get_terrain_at") and world.get_terrain_at(next_tile_center) == "water":
 				continue
 			
 			# Check if occupied by player or another orc
