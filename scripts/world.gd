@@ -8,6 +8,8 @@ const RENDER_DISTANCE = 2  # How many chunks to render around player
 
 var generated_chunks = {}  # Dictionary to track which chunks have been generated
 var terrain_data = {}  # Dictionary to store terrain type at each tile position
+var spawn_points = []  # Array of spawn point positions (world positions)
+var spawn_points_per_chunk = 2  # Number of spawn points to create per chunk
 var noise: FastNoiseLite
 var last_drawn_count = 0
 var time_passed = 0.0  # For water animation
@@ -107,8 +109,54 @@ func generate_chunk(chunk_pos: Vector2i):
 			var tile_world_pos = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
 			terrain_data[tile_world_pos] = terrain_type
 	
+	# Generate spawn points for this chunk
+	generate_spawn_points_for_chunk(chunk_pos)
+	
 	# Trigger redraw when new terrain is generated
 	queue_redraw()
+
+func generate_spawn_points_for_chunk(chunk_pos: Vector2i):
+	"""Generate spawn points within a chunk on walkable terrain"""
+	var start_x = chunk_pos.x * CHUNK_SIZE
+	var start_y = chunk_pos.y * CHUNK_SIZE
+	var attempts = 0
+	var max_attempts = 50
+	
+	for i in range(spawn_points_per_chunk):
+		var spawn_found = false
+		attempts = 0
+		
+		while not spawn_found and attempts < max_attempts:
+			# Random position within chunk
+			var tile_x = start_x + randi_range(2, CHUNK_SIZE - 3)
+			var tile_y = start_y + randi_range(2, CHUNK_SIZE - 3)
+			var spawn_pos = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
+			
+			# Check if walkable and not too close to other spawn points
+			if is_walkable(spawn_pos):
+				var too_close = false
+				for existing_spawn in spawn_points:
+					if spawn_pos.distance_to(existing_spawn) < TILE_SIZE * 5:
+						too_close = true
+						break
+				
+				if not too_close:
+					spawn_points.append(spawn_pos)
+					spawn_found = true
+			
+			attempts += 1
+
+func is_spawn_point_visible(spawn_pos: Vector2, player_pos: Vector2, view_distance: float = 600.0) -> bool:
+	"""Check if a spawn point is visible to the player (within view distance)"""
+	return spawn_pos.distance_to(player_pos) < view_distance
+
+func get_available_spawn_points(player_pos: Vector2) -> Array:
+	"""Get all spawn points that are not visible to the player"""
+	var available = []
+	for spawn_pos in spawn_points:
+		if not is_spawn_point_visible(spawn_pos, player_pos):
+			available.append(spawn_pos)
+	return available
 
 func _draw():
 	# Draw all terrain tiles with textures or color fallback

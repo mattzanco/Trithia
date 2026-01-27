@@ -16,156 +16,64 @@ func _ready():
 		debug.flush()
 	
 	await get_tree().process_frame  # Wait one frame for player to be ready
-	print("About to call spawn_starting_orc()")
+	print("About to call spawn_starting_orcs()")
 	
 	if debug:
-		debug.store_line("About to spawn orc")
+		debug.store_line("About to spawn orcs")
 		debug.flush()
 	
 	spawn_starting_orcs()
 	print("spawn_starting_orcs() completed")
+	
+	# Start spawn timer for continuous spawning
+	var spawn_timer = Timer.new()
+	spawn_timer.wait_time = 10.0  # Spawn every 10 seconds
+	spawn_timer.timeout.connect(_on_spawn_timer_timeout)
+	add_child(spawn_timer)
+	spawn_timer.start()
 
 func spawn_starting_orcs():
-	# Spawn two orcs at random walkable locations away from the player
+	# Spawn 10 orcs at random spawn points around the world
 	var player = $Player
 	var world = $World
-	var occupied_positions = []  # Track orc positions to prevent overlap
 	
-	var first_orc_pos = spawn_orc_at_position(player, world, Vector2.ZERO, 100, occupied_positions)
-	occupied_positions.append(first_orc_pos)
-	print("[SPAWN] First orc final position: ", first_orc_pos)
+	# Wait for world to generate spawn points
+	await get_tree().process_frame
 	
-	# Spawn second orc nearby the first one
-	print("[SPAWN] Spawning second orc near: ", first_orc_pos)
-	var second_orc_pos = spawn_orc_at_position(player, world, first_orc_pos, 100, occupied_positions)
-	print("[SPAWN] Second orc final position: ", second_orc_pos)
+	var available_spawns = world.get_available_spawn_points(player.position)
+	var orcs_to_spawn = min(10, available_spawns.size())
+	
+	print("[SPAWN] Found ", available_spawns.size(), " available spawn points")
+	print("[SPAWN] Spawning ", orcs_to_spawn, " orcs")
+	
+	for i in range(orcs_to_spawn):
+		var spawn_pos = available_spawns[i]
+		spawn_orc_at_spawn_point(spawn_pos)
+		print("[SPAWN] Orc ", i + 1, " spawned at: ", spawn_pos)
 
-func spawn_orc_at_position(player: Node2D, world: Node2D, near_position: Vector2, max_attempts: int, occupied_positions: Array) -> Vector2:
+func _on_spawn_timer_timeout():
+	"""Periodically spawn orcs at available spawn points"""
+	var player = $Player
+	var world = $World
+	
+	var available_spawns = world.get_available_spawn_points(player.position)
+	
+	# Spawn 1-3 orcs if spawn points are available
+	if available_spawns.size() > 0:
+		var num_to_spawn = min(randi_range(1, 3), available_spawns.size())
+		for i in range(num_to_spawn):
+			var random_index = randi_range(0, available_spawns.size() - 1)
+			var spawn_pos = available_spawns[random_index]
+			spawn_orc_at_spawn_point(spawn_pos)
+			print("[SPAWN TIMER] Spawned orc at: ", spawn_pos)
+			available_spawns.remove_at(random_index)
+
+func spawn_orc_at_spawn_point(spawn_pos: Vector2):
+	"""Spawn an orc at a specific spawn point"""
 	var orc = ORC_SCENE.instantiate()
-	var orc_position = Vector2.ZERO
-	var attempts = 0
-	var min_spacing = TILE_SIZE * 2  # Minimum distance between orcs
-	
-	print("[SPAWN_FUNC] Starting spawn with near_position: ", near_position, ", is_first_orc: ", near_position == Vector2.ZERO)
-	
-	# Keep trying to spawn on a walkable tile
-	while attempts < max_attempts:
-		# If near_position is Vector2.ZERO, spawn relative to player
-		# Otherwise spawn near the given position (for nearby spawns)
-		var base_pos = player.position if near_position == Vector2.ZERO else near_position
-		var spawn_range = 150 if near_position == Vector2.ZERO else 100
-		
-		var random_x = randi_range(-spawn_range, spawn_range)
-		var random_y = randi_range(-spawn_range, spawn_range)
-		var candidate_pos = base_pos + Vector2(random_x, random_y)
-		
-		# Snap to tile center
-		var tile_x = round(candidate_pos.x / TILE_SIZE)
-		var tile_y = round(candidate_pos.y / TILE_SIZE)
-		candidate_pos = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
-		
-		# Check if the feet tile (lower tile) is walkable
-		var feet_position = candidate_pos + Vector2(0, TILE_SIZE/2)
-		# Snap to tile center for walkability check
-		var feet_tile_x = round(feet_position.x / TILE_SIZE)
-		var feet_tile_y = round(feet_position.y / TILE_SIZE)
-		var feet_tile = Vector2(feet_tile_x * TILE_SIZE + TILE_SIZE/2, feet_tile_y * TILE_SIZE + TILE_SIZE/2)
-		
-		# Check distance from player and all other orcs
-		var too_close_to_player = candidate_pos.distance_to(player.position) <= TILE_SIZE * 2
-		var too_close_to_orc = false
-		
-		for occupied_pos in occupied_positions:
-			if candidate_pos.distance_to(occupied_pos) < min_spacing:
-				too_close_to_orc = true
-				break
-		
-		if world.is_walkable(feet_tile) and not too_close_to_player and not too_close_to_orc:
-			orc_position = candidate_pos
-			break
-		
-		attempts += 1
-	
-	# If we couldn't find a valid spawn after max_attempts, use a safe fallback
-	if attempts >= max_attempts:
-		var fallback_found = false
-		
-		# Try to find a walkable fallback position
-		if near_position == Vector2.ZERO:
-			# First orc: try positions around player
-			for offset_x in [-4, -3, -2, 2, 3, 4, 0]:
-				for offset_y in [3, 4, 5, -3, -4, -5]:
-					var fallback_candidate = player.position + Vector2(offset_x * TILE_SIZE, offset_y * TILE_SIZE)
-					# Snap to tile center
-					var tile_x = round(fallback_candidate.x / TILE_SIZE)
-					var tile_y = round(fallback_candidate.y / TILE_SIZE)
-					fallback_candidate = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
-					var fallback_feet = fallback_candidate + Vector2(0, TILE_SIZE/2)
-					# Snap feet to tile center for walkability check
-					var feet_tile_x = round(fallback_feet.x / TILE_SIZE)
-					var feet_tile_y = round(fallback_feet.y / TILE_SIZE)
-					var feet_tile = Vector2(feet_tile_x * TILE_SIZE + TILE_SIZE/2, feet_tile_y * TILE_SIZE + TILE_SIZE/2)
-					if world.is_walkable(feet_tile) and fallback_candidate.distance_to(player.position) > TILE_SIZE * 2:
-						orc_position = fallback_candidate
-						fallback_found = true
-						print("[SPAWN] Using fallback position for first orc: ", orc_position)
-						break
-				if fallback_found:
-					break
-		else:
-			# Second orc: try positions around first orc
-			for offset_x in [-3, -2, 2, 3, -1, 1, 0]:
-				for offset_y in [2, 3, -2, -3, -1, 1, 0]:
-					var fallback_candidate = near_position + Vector2(offset_x * TILE_SIZE, offset_y * TILE_SIZE)
-					# Snap to tile center
-					var tile_x = round(fallback_candidate.x / TILE_SIZE)
-					var tile_y = round(fallback_candidate.y / TILE_SIZE)
-					fallback_candidate = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
-					var fallback_feet = fallback_candidate + Vector2(0, TILE_SIZE/2)
-					# Snap feet to tile center for walkability check
-					var feet_tile_x = round(fallback_feet.x / TILE_SIZE)
-					var feet_tile_y = round(fallback_feet.y / TILE_SIZE)
-					var feet_tile = Vector2(feet_tile_x * TILE_SIZE + TILE_SIZE/2, feet_tile_y * TILE_SIZE + TILE_SIZE/2)
-					var too_close_to_player = fallback_candidate.distance_to(player.position) <= TILE_SIZE * 2
-					var too_close_to_other = false
-					for occupied_pos in occupied_positions:
-						if fallback_candidate.distance_to(occupied_pos) < TILE_SIZE * 2:
-							too_close_to_other = true
-							break
-					
-					if world.is_walkable(feet_tile) and not too_close_to_player and not too_close_to_other:
-						orc_position = fallback_candidate
-						fallback_found = true
-						print("[SPAWN] Using fallback position for second orc: ", orc_position)
-						break
-				if fallback_found:
-					break
-		
-		# If still no valid fallback found, use the first valid position we can find
-		if not fallback_found:
-			orc_position = player.position + Vector2(0, 4 * TILE_SIZE)
-			print("[SPAWN] No valid fallback found, using final fallback: ", orc_position)
-	
-	print("Spawning orc...")
-	print("Player position: ", player.position)
-	print("Orc position: ", orc_position)
-	
-	orc.position = orc_position
-	# Add orc to Main node
+	orc.position = spawn_pos
 	add_child(orc)
-	# Insert between World (0) and Player (1)
-	move_child(orc, 1)
-	
-	# Verify orc is on grid
-	var orc_grid_x = round(orc.position.x / TILE_SIZE)
-	var orc_grid_y = round(orc.position.y / TILE_SIZE)
-	var player_grid_x = round(player.position.x / TILE_SIZE)
-	var player_grid_y = round(player.position.y / TILE_SIZE)
-	print("Grid check - Player tile: (", player_grid_x, ", ", player_grid_y, ") at world pos ", player.position)
-	print("Grid check - Orc tile: (", orc_grid_x, ", ", orc_grid_y, ") at world pos ", orc.position)
-	print("Orc added to Main")
-	
-	return orc.position  # Return the actual snapped position of the orc
+	print("[SPAWN_FUNC] Orc spawned at spawn point: ", spawn_pos)
 
 func _process(_delta):
 	# Update depth sorting based on Y position

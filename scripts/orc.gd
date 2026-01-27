@@ -41,7 +41,7 @@ var is_targeted = false
 var targeted_enemy = null
 var attack_cooldown = 2.5  # Orc attacks slower than player
 var attack_timer = 0.0
-var detection_range = TILE_SIZE * 10  # Can detect player from 10 tiles away
+var detection_range = 700.0  # Detect player just before they become visible on screen
 
 func _ready():
 	# Get the AnimatedSprite2D node
