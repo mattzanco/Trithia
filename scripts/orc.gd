@@ -21,6 +21,18 @@ enum AIState { IDLE, CHASE, SURROUND }
 var current_state = AIState.IDLE
 var last_player_tile = Vector2.ZERO
 
+# Surround behavior timer
+var surround_move_timer = 0.0
+var surround_move_interval = 3.0  # Move to new position every 3 seconds
+
+# Position tracking to detect stuck/oscillating movement
+var recent_positions = []
+var max_position_history = 6
+var stuck_check_timer = 0.0
+var stuck_wait_timer = 0.0
+var blacklisted_tiles = {}  # Tiles to avoid temporarily
+var blacklist_duration = 3.0  # How long to avoid a tile
+
 # Health system
 var max_health = 50
 var current_health = 50
@@ -603,6 +615,66 @@ func _physics_process(delta):
 	if attack_timer > 0.0:
 		attack_timer -= delta
 	
+	# Handle surround move timer
+	if surround_move_timer > 0.0:
+		surround_move_timer -= delta
+	
+	# Update blacklist timers
+	var expired_tiles = []
+	for tile in blacklisted_tiles.keys():
+		blacklisted_tiles[tile] -= delta
+		if blacklisted_tiles[tile] <= 0:
+			expired_tiles.append(tile)
+	for tile in expired_tiles:
+		blacklisted_tiles.erase(tile)
+	
+	# Handle stuck wait timer
+	if stuck_wait_timer > 0.0:
+		stuck_wait_timer -= delta
+		# Make sure we're playing idle animation while waiting
+		if not is_moving:
+			var dir_name = get_direction_name(current_direction)
+			if animated_sprite != null and animated_sprite.sprite_frames != null:
+				var anim_name = "idle_" + dir_name
+				if animated_sprite.animation != anim_name:
+					animated_sprite.play(anim_name)
+		return  # Don't move while waiting after being stuck
+	
+	# Track position periodically to detect oscillation
+	stuck_check_timer += delta
+	if stuck_check_timer >= 0.2:  # Check very frequently - every 0.2 seconds
+		stuck_check_timer = 0.0
+		
+		# Record current tile position
+		var current_tile = Vector2(floor(position.x / TILE_SIZE), floor(position.y / TILE_SIZE))
+		recent_positions.append(current_tile)
+		
+		# Keep only recent history
+		if recent_positions.size() > max_position_history:
+			recent_positions.pop_front()
+		
+		# Check if we're oscillating between positions (more sensitive check)
+		if recent_positions.size() >= 4:
+			# Check for simple back-and-forth (A-B-A-B pattern)
+			var last_four = recent_positions.slice(-4)
+			if last_four[0] == last_four[2] and last_four[1] == last_four[3] and last_four[0] != last_four[1]:
+				# Oscillating detected! Blacklist both tiles and stop
+				blacklisted_tiles[last_four[0]] = blacklist_duration
+				blacklisted_tiles[last_four[1]] = blacklist_duration
+				is_moving = false
+				stuck_wait_timer = randf_range(0.5, 1.0)
+				recent_positions.clear()
+				
+				# Set idle animation
+				var dir_name = get_direction_name(current_direction)
+				if animated_sprite != null and animated_sprite.sprite_frames != null:
+					var anim_name = "idle_" + dir_name
+					if animated_sprite.animation != anim_name:
+						animated_sprite.play(anim_name)
+				
+				print("[ORC] Detected oscillation between tiles, waiting...")
+				return
+	
 	# Check if player is in detection range
 	if player != null:
 		var distance_to_player = position.distance_to(player.position)
@@ -622,14 +694,25 @@ func _physics_process(delta):
 			# Enter SURROUND state
 			if current_state != AIState.SURROUND:
 				current_state = AIState.SURROUND
+				surround_move_timer = randf_range(1.0, 3.0)  # Random initial delay
 			
 			# Attack if cooldown is ready
 			if attack_timer <= 0.0:
 				perform_attack()
 				attack_timer = attack_cooldown
 			
-			# Stay in position (surround behavior)
+			# Occasionally move to a different adjacent tile while surrounding
 			if not is_moving:
+				# Check if it's time to reposition
+				if surround_move_timer <= 0.0:
+					# Try to move to a different adjacent tile
+					if try_surround_reposition():
+						surround_move_timer = surround_move_interval + randf_range(-0.5, 0.5)
+					else:
+						# Couldn't find new position, try again soon
+						surround_move_timer = 1.0
+				
+				# Play idle animation
 				var dir_name = get_direction_name(current_direction)
 				if animated_sprite != null and animated_sprite.sprite_frames != null:
 					var anim_name = "idle_" + dir_name
@@ -662,19 +745,46 @@ func _physics_process(delta):
 		var direction = (target_position - position).normalized()
 		var distance = position.distance_to(target_position)
 		
+		# Check if feet are currently on water during movement - abort if so
+		if world != null and world.has_method("get_terrain_type_from_noise"):
+			var feet_pos = position + Vector2(0, 32)
+			var feet_tile_x = int(floor(feet_pos.x / TILE_SIZE))
+			var feet_tile_y = int(floor(feet_pos.y / TILE_SIZE))
+			var feet_terrain = world.get_terrain_type_from_noise(feet_tile_x, feet_tile_y)
+			
+			if feet_terrain == "water":
+				# Stop immediately and snap back to last valid tile
+				var my_tile = Vector2(floor(position.x / TILE_SIZE), floor(position.y / TILE_SIZE))
+				var my_tile_center = Vector2(my_tile.x * TILE_SIZE + TILE_SIZE/2, my_tile.y * TILE_SIZE + TILE_SIZE/2)
+				
+				# Find nearest non-water tile based on feet position
+				var escape_dirs = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
+				for dir in escape_dirs:
+					var escape_tile_pos = Vector2(my_tile.x + dir.x, my_tile.y + dir.y)
+					var escape_center = Vector2(escape_tile_pos.x * TILE_SIZE + TILE_SIZE/2, escape_tile_pos.y * TILE_SIZE + TILE_SIZE/2)
+					var escape_feet = escape_center + Vector2(0, 32)
+					var escape_feet_x = int(floor(escape_feet.x / TILE_SIZE))
+					var escape_feet_y = int(floor(escape_feet.y / TILE_SIZE))
+					var escape_feet_terrain = world.get_terrain_type_from_noise(escape_feet_x, escape_feet_y)
+					if escape_feet_terrain != "water":
+						position = escape_center
+						break
+				
+				is_moving = false
+				return
+		
 		if distance < MOVE_SPEED * delta:
-			# Check if target tile is still valid before snapping
+			# Check if target tile feet position is still valid before snapping
 			var target_valid = true
 			
-			# Check walkability
-			if world != null and world.has_method("is_walkable"):
-				if not world.is_walkable(target_position):
+			# Check feet walkability
+			if world != null and world.has_method("get_terrain_type_from_noise"):
+				var target_feet = target_position + Vector2(0, 32)
+				var target_feet_x = int(floor(target_feet.x / TILE_SIZE))
+				var target_feet_y = int(floor(target_feet.y / TILE_SIZE))
+				var target_feet_terrain = world.get_terrain_type_from_noise(target_feet_x, target_feet_y)
+				if target_feet_terrain == "water":
 					target_valid = false
-				
-				# Double-check: explicitly verify it's not water
-				if target_valid and world.has_method("get_terrain_at"):
-					if world.get_terrain_at(target_position) == "water":
-						target_valid = false
 			
 			# Check if player is on the target tile
 			if target_valid and player != null and target_position.distance_to(player.position) < TILE_SIZE * 0.6:
@@ -696,11 +806,27 @@ func _physics_process(delta):
 						last_player_tile = player_tile
 						find_and_move_to_nearest_adjacent_tile()
 			else:
-				# Target tile is invalid, stop moving
+				# Target tile became invalid - snap back to current tile and stop
+				var my_tile = Vector2(floor(position.x / TILE_SIZE), floor(position.y / TILE_SIZE))
+				position = Vector2(my_tile.x * TILE_SIZE + TILE_SIZE/2, my_tile.y * TILE_SIZE + TILE_SIZE/2)
 				is_moving = false
 		else:
+			# Check next position's feet before moving
+			var next_pos = position + direction * MOVE_SPEED * delta
+			if world != null and world.has_method("get_terrain_type_from_noise"):
+				var next_feet = next_pos + Vector2(0, 32)
+				var next_feet_x = int(floor(next_feet.x / TILE_SIZE))
+				var next_feet_y = int(floor(next_feet.y / TILE_SIZE))
+				var next_feet_terrain = world.get_terrain_type_from_noise(next_feet_x, next_feet_y)
+				if next_feet_terrain == "water":
+					# About to move onto water - stop and snap to current tile
+					var my_tile = Vector2(floor(position.x / TILE_SIZE), floor(position.y / TILE_SIZE))
+					position = Vector2(my_tile.x * TILE_SIZE + TILE_SIZE/2, my_tile.y * TILE_SIZE + TILE_SIZE/2)
+					is_moving = false
+					return
+			
 			# Move smoothly towards target
-			position += direction * MOVE_SPEED * delta
+			position = next_pos
 		
 		# Update animation while moving
 		var dir_name = get_direction_name(current_direction)
@@ -708,6 +834,34 @@ func _physics_process(delta):
 			var anim_name = "walk_" + dir_name
 			if animated_sprite.animation != anim_name:
 				animated_sprite.play(anim_name)
+	else:
+		# Not moving - check if feet are on water and need to escape
+		if world != null and world.has_method("get_terrain_type_from_noise"):
+			var feet_pos = position + Vector2(0, 32)
+			var feet_tile_x = int(floor(feet_pos.x / TILE_SIZE))
+			var feet_tile_y = int(floor(feet_pos.y / TILE_SIZE))
+			var feet_terrain = world.get_terrain_type_from_noise(feet_tile_x, feet_tile_y)
+			
+			if feet_terrain == "water":
+				# Feet are on water! Find nearest walkable tile and move there immediately
+				var my_tile = Vector2(floor(position.x / TILE_SIZE), floor(position.y / TILE_SIZE))
+				var escape_dirs = [
+					Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT,
+					Vector2(1, 1), Vector2(1, -1), Vector2(-1, 1), Vector2(-1, -1)
+				]
+				
+				for dir in escape_dirs:
+					var escape_tile_pos = Vector2(my_tile.x + dir.x, my_tile.y + dir.y)
+					var escape_tile_center = Vector2(escape_tile_pos.x * TILE_SIZE + TILE_SIZE/2, escape_tile_pos.y * TILE_SIZE + TILE_SIZE/2)
+					var escape_feet = escape_tile_center + Vector2(0, 32)
+					var escape_feet_x = int(floor(escape_feet.x / TILE_SIZE))
+					var escape_feet_y = int(floor(escape_feet.y / TILE_SIZE))
+					var escape_feet_terrain = world.get_terrain_type_from_noise(escape_feet_x, escape_feet_y)
+					
+					if escape_feet_terrain != "water":
+						# Teleport to safety
+						position = escape_tile_center
+						break
 	
 	# Update z_index based on y position to ensure proper layering
 	z_index = clampi(int(position.y / 10) + 1000, 0, 10000)
@@ -740,20 +894,31 @@ func find_and_move_to_nearest_adjacent_tile():
 	for tile_coords in adjacent_tiles:
 		var tile_center = Vector2(tile_coords.x * TILE_SIZE + TILE_SIZE/2, tile_coords.y * TILE_SIZE + TILE_SIZE/2)
 		
-		# Check if walkable
-		if not world.has_method("is_walkable") or not world.is_walkable(tile_center):
+		# Skip blacklisted tiles
+		if blacklisted_tiles.has(tile_coords):
 			continue
 		
-		# Explicitly check if it's water
-		if world.has_method("get_terrain_at") and world.get_terrain_at(tile_center) == "water":
-			continue
+		# Check feet position (32 pixels below center) - this is what matters visually
+		var feet_pos = tile_center + Vector2(0, 32)
+		var feet_tile_x = int(floor(feet_pos.x / TILE_SIZE))
+		var feet_tile_y = int(floor(feet_pos.y / TILE_SIZE))
 		
-		# Check if occupied by another orc
-		if is_tile_occupied_by_enemy(tile_center):
-			continue
+		# Check if feet would be on water
+		if world.has_method("get_terrain_type_from_noise"):
+			var feet_terrain = world.get_terrain_type_from_noise(feet_tile_x, feet_tile_y)
+			if feet_terrain == "water":
+				continue
+		
+		# Allow occupied tiles but with a penalty - don't completely block them
+		var is_occupied = is_tile_occupied_by_enemy(tile_center)
 		
 		# Calculate distance from our current position
 		var dist = position.distance_to(tile_center)
+		
+		# Add penalty for occupied tiles so they're chosen last
+		if is_occupied:
+			dist += TILE_SIZE * 10  # Large penalty but not infinite
+		
 		if dist < best_distance:
 			best_distance = dist
 			best_tile = tile_center
@@ -789,31 +954,137 @@ func find_and_move_to_nearest_adjacent_tile():
 			)
 			var next_tile_center = Vector2(next_tile_pos.x * TILE_SIZE + TILE_SIZE/2, next_tile_pos.y * TILE_SIZE + TILE_SIZE/2)
 			
-			# Check if walkable
-			if world.has_method("is_walkable") and not world.is_walkable(next_tile_center):
+			# Skip blacklisted tiles
+			if blacklisted_tiles.has(next_tile_pos):
 				continue
 			
-			# Explicitly check if it's water
-			if world.has_method("get_terrain_at") and world.get_terrain_at(next_tile_center) == "water":
-				continue
+			# For diagonal movement, check that both intermediate tiles are also walkable
+			# This prevents cutting corners through water
+			if dir.x != 0 and dir.y != 0:
+				var horizontal_tile = Vector2((my_tile.x + sign(dir.x)) * TILE_SIZE + TILE_SIZE/2, my_tile.y * TILE_SIZE + TILE_SIZE/2)
+				var vertical_tile = Vector2(my_tile.x * TILE_SIZE + TILE_SIZE/2, (my_tile.y + sign(dir.y)) * TILE_SIZE + TILE_SIZE/2)
+				
+				# Both intermediate tiles must be walkable for diagonal movement
+				if world.has_method("is_walkable"):
+					if not world.is_walkable(horizontal_tile) or not world.is_walkable(vertical_tile):
+						continue
+				if world.has_method("get_terrain_at"):
+					if world.get_terrain_at(horizontal_tile) == "water" or world.get_terrain_at(vertical_tile) == "water":
+						continue
 			
-			# Check if occupied by player or another orc
+			# Check feet position (32 pixels below center) to prevent visual water walking
+			var next_feet_pos = next_tile_center + Vector2(0, 32)
+			var next_feet_tile_x = int(floor(next_feet_pos.x / TILE_SIZE))
+			var next_feet_tile_y = int(floor(next_feet_pos.y / TILE_SIZE))
+			if world.has_method("get_terrain_type_from_noise"):
+				var feet_terrain = world.get_terrain_type_from_noise(next_feet_tile_x, next_feet_tile_y)
+				if feet_terrain == "water":
+					continue
+			
+			# Check if occupied by player
 			if player != null and next_tile_center.distance_to(player.position) < TILE_SIZE * 0.6:
 				continue
-			if is_tile_occupied_by_enemy(next_tile_center):
-				continue
+			
+			# Allow movement to tiles occupied by other orcs if no other option
+			# This will be the last resort due to the penalty in best_tile calculation
+			var is_occupied = is_tile_occupied_by_enemy(next_tile_center)
+			
+			# Skip if occupied, unless we're desperate (tried all other options)
+			if is_occupied:
+				# Only skip if this isn't our last attempt
+				var remaining_dirs = sorted_dirs.filter(func(d): return sorted_dirs.find(d) > sorted_dirs.find(item))
+				if remaining_dirs.size() > 0:
+					continue
+				# Last option - allow moving here even if occupied
 			
 			# This tile is good - move to it
 			target_position = next_tile_center
 			is_moving = true
 			
-			# Update facing direction
+			# Update facing direction - keep it simple, just use the actual movement direction
 			var dx = sign(dir.x)
 			var dy = sign(dir.y)
-			if dx != 0 or dy != 0:
-				current_direction = calculate_direction(int(dx), int(dy))
+			if dx != 0 and dy != 0:
+				# Diagonal movement - choose primary direction based on which component is stronger
+				# or prefer horizontal if equal
+				if abs(dir.x) > abs(dir.y):
+					current_direction = Vector2(dx, 0)
+				elif abs(dir.y) > abs(dir.x):
+					current_direction = Vector2(0, dy)
+				else:
+					# Equal - prefer horizontal
+					current_direction = Vector2(dx, 0)
+			elif dx != 0:
+				current_direction = Vector2(dx, 0)
+			elif dy != 0:
+				current_direction = Vector2(0, dy)
 			
 			return
+
+
+func try_surround_reposition() -> bool:
+	"""Try to move to a different adjacent tile around the player while in SURROUND state.
+	Returns true if a new position was found and movement initiated."""
+	if targeted_enemy == null or world == null:
+		return false
+	
+	var player_tile = Vector2(floor(targeted_enemy.position.x / TILE_SIZE), floor(targeted_enemy.position.y / TILE_SIZE))
+	var my_tile = Vector2(floor(position.x / TILE_SIZE), floor(position.y / TILE_SIZE))
+	
+	# List all 8 adjacent tiles around the player
+	var adjacent_tiles = [
+		Vector2(player_tile.x + 1, player_tile.y),  # Right
+		Vector2(player_tile.x - 1, player_tile.y),  # Left
+		Vector2(player_tile.x, player_tile.y + 1),  # Down
+		Vector2(player_tile.x, player_tile.y - 1),  # Up
+		Vector2(player_tile.x + 1, player_tile.y + 1),  # Down-Right
+		Vector2(player_tile.x - 1, player_tile.y + 1),  # Down-Left
+		Vector2(player_tile.x + 1, player_tile.y - 1),  # Up-Right
+		Vector2(player_tile.x - 1, player_tile.y - 1),  # Up-Left
+	]
+	
+	# Shuffle to add randomness
+	adjacent_tiles.shuffle()
+	
+	# Find a valid adjacent tile that's not our current position
+	for tile_coords in adjacent_tiles:
+		var tile_center = Vector2(tile_coords.x * TILE_SIZE + TILE_SIZE/2, tile_coords.y * TILE_SIZE + TILE_SIZE/2)
+		
+		# Skip if this is our current tile
+		if tile_coords == my_tile:
+			continue
+		
+		# Check feet position (32 pixels below center) to prevent visual water walking
+		var feet_pos = tile_center + Vector2(0, 32)
+		var feet_tile_x = int(floor(feet_pos.x / TILE_SIZE))
+		var feet_tile_y = int(floor(feet_pos.y / TILE_SIZE))
+		
+		# Check if feet would be on water
+		if world.has_method("get_terrain_type_from_noise"):
+			var feet_terrain = world.get_terrain_type_from_noise(feet_tile_x, feet_tile_y)
+			if feet_terrain == "water":
+				continue
+		
+		# Check if occupied by another orc
+		if is_tile_occupied_by_enemy(tile_center):
+			continue
+		
+		# This tile is valid - move to it if we can path there
+		if my_tile.distance_to(tile_coords) <= 1.5:
+			# Directly adjacent, just move there
+			target_position = tile_center
+			is_moving = true
+			
+			# Update facing direction toward player
+			var dir_to_player = (targeted_enemy.position - position).normalized()
+			if abs(dir_to_player.x) > abs(dir_to_player.y):
+				current_direction = Vector2(sign(dir_to_player.x), 0)
+			else:
+				current_direction = Vector2(0, sign(dir_to_player.y))
+			
+			return true
+	
+	return false
 
 
 func calculate_direction(dx: int, dy: int) -> Vector2:

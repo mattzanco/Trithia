@@ -115,6 +115,17 @@ func generate_chunk(chunk_pos: Vector2i):
 	# Trigger redraw when new terrain is generated
 	queue_redraw()
 
+func get_terrain_type_from_noise(tile_x: int, tile_y: int) -> String:
+	"""Get terrain type directly from noise value for a tile coordinate"""
+	var noise_val = noise.get_noise_2d(tile_x, tile_y)
+	
+	if noise_val < -0.3:
+		return "water"
+	elif noise_val > 0.4:
+		return "stone"
+	else:
+		return "grass"
+
 func generate_spawn_points_for_chunk(chunk_pos: Vector2i):
 	"""Generate spawn points within a chunk on walkable terrain"""
 	var start_x = chunk_pos.x * CHUNK_SIZE
@@ -194,20 +205,13 @@ func _draw():
 
 func is_walkable(world_position: Vector2) -> bool:
 	# Check if the given world position is walkable
-	# First try exact position match
-	if terrain_data.has(world_position):
-		var terrain = terrain_data[world_position]
-		return terrain != "water"
+	# Calculate which tile this position is in
+	var tile_x = int(floor(world_position.x / TILE_SIZE))
+	var tile_y = int(floor(world_position.y / TILE_SIZE))
 	
-	# If no exact match, find the closest tile and check it
-	# Round to nearest tile center
-	var tile_x = round(world_position.x / TILE_SIZE)
-	var tile_y = round(world_position.y / TILE_SIZE)
-	var nearest_tile = Vector2(tile_x * TILE_SIZE + TILE_SIZE / 2, tile_y * TILE_SIZE + TILE_SIZE / 2)
-	
-	if terrain_data.has(nearest_tile):
-		var terrain = terrain_data[nearest_tile]
-		return terrain != "water"
+	# Check terrain directly from noise - this is the authoritative source
+	var terrain_type = get_terrain_type_from_noise(tile_x, tile_y)
+	return terrain_type != "water"
 	
 	# If terrain not yet generated, check if it would be water based on noise
 	# This provides early validation before terrain is fully generated
@@ -227,16 +231,12 @@ func is_walkable(world_position: Vector2) -> bool:
 
 func get_terrain_at(world_position: Vector2) -> String:
 	"""Get terrain type at a world position"""
-	if terrain_data.has(world_position):
-		return terrain_data[world_position]
+	# Calculate which tile this position is in
+	var tile_x = int(floor(world_position.x / TILE_SIZE))
+	var tile_y = int(floor(world_position.y / TILE_SIZE))
 	
-	# Check nearest tile
-	var tile_x = round(world_position.x / TILE_SIZE)
-	var tile_y = round(world_position.y / TILE_SIZE)
-	var nearest_tile = Vector2(tile_x * TILE_SIZE + TILE_SIZE / 2, tile_y * TILE_SIZE + TILE_SIZE / 2)
-	
-	if terrain_data.has(nearest_tile):
-		return terrain_data[nearest_tile]
+	# Get terrain directly from noise - this is the authoritative source
+	return get_terrain_type_from_noise(tile_x, tile_y)
 	
 	# For ungenerated terrain, check noise value prediction
 	var tile_x_int = int(tile_x)

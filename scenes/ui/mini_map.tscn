@@ -1,0 +1,20 @@
+[gd_scene load_steps=2 format=3 uid="uid://b5vqy8r3nxc8q"]
+
+[ext_resource type="Script" path="res://scripts/mini_map.gd" id="1_x8v7m"]
+
+[node name="MiniMapLayer" type="CanvasLayer"]
+layer = 100
+
+[node name="MiniMap" type="Control" parent="."]
+custom_minimum_size = Vector2(400, 400)
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 0.0
+offset_left = -400.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 400.0
+script = ExtResource("1_x8v7m")
