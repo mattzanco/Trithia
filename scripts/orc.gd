@@ -9,6 +9,7 @@ const COLLISION_RADIUS = 10.0  # Distance to check for collisions
 
 var animated_sprite: AnimatedSprite2D
 var current_direction = Vector2.DOWN
+var last_movement_direction = Vector2.ZERO  # Track actual movement direction to prevent flip-flopping
 
 # Movement variables
 var is_moving = false
@@ -1001,27 +1002,68 @@ func find_and_move_to_nearest_adjacent_tile():
 			target_position = next_tile_center
 			is_moving = true
 			
-			# Update facing direction - keep it simple, just use the actual movement direction
+			# Update facing direction using same logic as player
+			# Handle transitions between straight and diagonal movement
 			var dx = sign(dir.x)
 			var dy = sign(dir.y)
-			if dx != 0 and dy != 0:
-				# Diagonal movement - choose primary direction based on which component is stronger
-				# or prefer horizontal if equal
-				if abs(dir.x) > abs(dir.y):
-					current_direction = Vector2(dx, 0)
-				elif abs(dir.y) > abs(dir.x):
-					current_direction = Vector2(0, dy)
-				else:
-					# Equal - prefer horizontal
-					current_direction = Vector2(dx, 0)
-			elif dx != 0:
-				current_direction = Vector2(dx, 0)
-			elif dy != 0:
-				current_direction = Vector2(0, dy)
+			var movement_dir = Vector2(dx, dy)
+		
+			var facing_h = Vector2(dx, 0) if dx != 0 else Vector2.ZERO
+			var facing_v = Vector2(0, dy) if dy != 0 else Vector2.ZERO
+			
+			# Only update facing if movement direction actually changed
+			if movement_dir != last_movement_direction:
+				if facing_h != Vector2.ZERO and facing_v != Vector2.ZERO:
+					# Diagonal movement
+					# Check if we're transitioning from straight to diagonal
+					var was_moving_straight = (last_movement_direction.x == 0 or last_movement_direction.y == 0) and last_movement_direction != Vector2.ZERO
+					
+					if was_moving_straight:
+						# Transitioning from straight to diagonal - pick the NEW component
+						if current_direction == facing_h:
+							# Was moving horizontally, now diagonal - switch to vertical
+							current_direction = facing_v
+						elif current_direction == facing_v:
+							# Was moving vertically, now diagonal - switch to horizontal
+							current_direction = facing_h
+						else:
+							# Direction completely changed, pick one intelligently
+							var h_is_backwards = (facing_h == -current_direction)
+							var v_is_backwards = (facing_v == -current_direction)
+							
+							if h_is_backwards and not v_is_backwards:
+								current_direction = facing_v
+							elif v_is_backwards and not h_is_backwards:
+								current_direction = facing_h
+							else:
+								# Prefer horizontal
+								current_direction = facing_h
+					else:
+						# Starting diagonal or changing diagonal direction
+						# Pick the component that's not backwards, or keep current if valid
+						if current_direction == facing_h or current_direction == facing_v:
+							# Current is valid, keep it
+							pass
+						else:
+							# Pick one intelligently
+							var h_is_backwards = (facing_h == -current_direction)
+							var v_is_backwards = (facing_v == -current_direction)
+							
+							if h_is_backwards and not v_is_backwards:
+								current_direction = facing_v
+							elif v_is_backwards and not h_is_backwards:
+								current_direction = facing_h
+							else:
+								current_direction = facing_h
+				elif facing_h != Vector2.ZERO:
+					current_direction = facing_h
+				elif facing_v != Vector2.ZERO:
+					current_direction = facing_v
+				
+				# Update last movement direction
+				last_movement_direction = movement_dir
 			
 			return
-
-
 func try_surround_reposition() -> bool:
 	"""Try to move to a different adjacent tile around the player while in SURROUND state.
 	Returns true if a new position was found and movement initiated."""
