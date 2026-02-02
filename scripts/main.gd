@@ -53,7 +53,10 @@ func spawn_starting_orcs():
 
 func _on_spawn_timer_timeout():
 	"""Periodically spawn orcs at available spawn points"""
-	var player = $Player
+	var player = get_node_or_null("Player")
+	if player == null:
+		return  # Player is dead, stop spawning
+	
 	var world = $World
 	
 	var available_spawns = world.get_available_spawn_points(player.position)
