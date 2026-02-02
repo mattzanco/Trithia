@@ -1185,7 +1185,7 @@ func draw_character_side(img: Image, skin: Color, hair: Color, leather: Color, l
 				if x >= 0 and x < 32:
 					img.set_pixel(x, y, outline)
 
-func _input(event):
+func _unhandled_input(event):
 	# Handle click-to-move
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -1648,7 +1648,7 @@ func die():
 	# Player died - create a dead body visual at player's feet position
 	print("[PLAYER_DIE] Player died at position ", position)
 	
-	var dead_body = Node2D.new()
+	var dead_body = Area2D.new()
 	dead_body.position = position + Vector2(0, TILE_SIZE/2)  # Position at the feet tile
 	dead_body.z_index = 0  # On the ground, above terrain
 	

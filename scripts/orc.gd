@@ -1239,7 +1239,7 @@ func perform_attack():
 
 func die():
 	# Create a dead body visual at the orc's position
-	var dead_body = Node2D.new()
+	var dead_body = Area2D.new()
 	dead_body.position = position + Vector2(0, TILE_SIZE/2)  # Position at the feet tile
 	dead_body.z_index = 0  # On the ground, above terrain
 	
