@@ -64,14 +64,27 @@ func _process(_delta):
 					var terrain_type = "grass"
 					if world != null and world.has_method("get_terrain_type_from_noise"):
 						terrain_type = world.get_terrain_type_from_noise(tile_x, tile_y)
+					
+					# Check if this should be sand (adjacent to water)
+					if terrain_type in ["grass", "dirt"]:
+						var is_next_to_water = false
+						for nx in [-1, 0, 1]:
+							for ny in [-1, 0, 1]:
+								if nx == 0 and ny == 0:
+									continue
+								var neighbor_x = tile_x + nx
+								var neighbor_y = tile_y + ny
+								var neighbor_noise = world.noise.get_noise_2d(neighbor_x, neighbor_y)
+								if neighbor_noise < -0.3:  # Water threshold
+									is_next_to_water = true
+									break
+							if is_next_to_water:
+								break
+						
+						if is_next_to_water:
+							terrain_type = "sand"
+					
 					discovered_tiles[tile_key] = terrain_type
-	
-	# Update orc list
-	orcs.clear()
-	var root = get_tree().root.get_child(get_tree().root.get_child_count() - 1)
-	for child in root.get_children():
-		if child.is_class("CharacterBody2D") and child != player and child.has_method("perform_attack"):
-			orcs.append(child)
 	
 	queue_redraw()
 
