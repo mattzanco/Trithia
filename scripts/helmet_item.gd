@@ -9,11 +9,13 @@ func _ready():
 	queue_redraw()
 	# Allow equip without adjacency when dragging onto UI
 	requires_adjacent = true
+	# Center pick rect to match centered draw
+	pick_rect_offset = -pick_rect_size / 2.0
 
 func _draw():
 	var texture = get_helmet_texture()
 	if texture:
-		draw_texture(texture, Vector2.ZERO)
+		draw_texture(texture, -texture.get_size() / 2.0)
 
 static var _helmet_texture: Texture2D = null
 

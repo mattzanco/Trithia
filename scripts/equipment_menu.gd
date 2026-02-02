@@ -4,26 +4,51 @@ const TILE_SIZE = 32
 
 @export var helmet_color := Color(0.7, 0.7, 0.75)
 
+const DRAGGABLE_SCRIPT = preload("res://scripts/draggable_item.gd")
+
 var player = null
 var head_slot: Control
 var helmet_icon: TextureRect
+var ghost_icon: TextureRect
+var ghost_layer: CanvasLayer
 
 var is_dragging = false
 var drag_offset = Vector2.ZERO
 var helmet_world_item = null
+var head_slot_style: StyleBox
+var head_slot_highlight: StyleBox
 
 func _ready():
 	player = get_player_node()
 	head_slot = $Panel/Margin/Center/VBox/SlotGrid/HeadSlot
+	head_slot_style = head_slot.get_theme_stylebox("panel")
+	head_slot_highlight = create_highlight_style()
 	ensure_helmet_icon()
+	ensure_ghost_icon()
 	set_process_input(true)
 	set_process(true)
 	update_helmet_visual()
+
+func _exit_tree():
+	if helmet_world_item and is_instance_valid(helmet_world_item):
+		helmet_world_item.queue_free()
+		helmet_world_item = null
+	if ghost_layer and is_instance_valid(ghost_layer):
+		ghost_layer.queue_free()
+		ghost_layer = null
+		ghost_icon = null
+	if helmet_icon and is_instance_valid(helmet_icon):
+		helmet_icon.queue_free()
+		helmet_icon = null
 
 func _process(_delta):
 	# Keep UI in sync when not dragging
 	if not is_dragging:
 		update_helmet_visual()
+	if ghost_icon == null:
+		ensure_ghost_icon()
+	update_drag_hover_state()
+	update_world_drag_preview()
 
 func _input(event):
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -50,6 +75,20 @@ func ensure_helmet_icon():
 	helmet_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(helmet_icon)
 
+func ensure_ghost_icon():
+	if ghost_icon != null:
+		return
+	ghost_layer = CanvasLayer.new()
+	ghost_layer.layer = 1000
+	get_viewport().add_child(ghost_layer)
+	ghost_icon = TextureRect.new()
+	ghost_icon.texture = create_helmet_texture()
+	ghost_icon.size = Vector2(32, 32)
+	ghost_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ghost_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ghost_icon.visible = false
+	ghost_layer.add_child(ghost_icon)
+
 func create_helmet_texture() -> Texture2D:
 	var helmet_script = load("res://scripts/helmet_item.gd")
 	if helmet_script:
@@ -75,12 +114,16 @@ func position_icon_in_slot():
 func start_drag(mouse_pos: Vector2):
 	is_dragging = true
 	drag_offset = helmet_icon.global_position - mouse_pos
+	update_drag_hover_state()
 
 func move_icon(mouse_pos: Vector2):
 	helmet_icon.global_position = mouse_pos + drag_offset
+	update_drag_hover_state()
 
 func finish_drag(mouse_pos: Vector2):
 	is_dragging = false
+	helmet_icon.z_index = 0
+	clear_slot_highlight()
 	if is_point_in_rect(mouse_pos, get_head_slot_rect()):
 		set_helmet_equipped(true)
 		position_icon_in_slot()
@@ -112,6 +155,73 @@ func get_head_slot_rect() -> Rect2:
 
 func is_point_in_rect(point: Vector2, rect: Rect2) -> bool:
 	return rect.has_point(point)
+
+func update_drag_hover_state():
+	if not is_dragging:
+		return
+	var icon_rect = helmet_icon.get_global_rect()
+	var menu_rect = get_global_rect()
+	if icon_rect.intersects(menu_rect):
+		helmet_icon.z_index = 100
+	else:
+		helmet_icon.z_index = 0
+	var head_rect = head_slot.get_global_rect()
+	if icon_rect.intersects(head_rect):
+		apply_slot_highlight()
+	else:
+		clear_slot_highlight()
+
+func update_world_drag_preview():
+	if is_dragging:
+		if ghost_icon:
+			ghost_icon.visible = false
+		return
+	var drag_item = DRAGGABLE_SCRIPT.current_drag_item if DRAGGABLE_SCRIPT else null
+	if drag_item == null:
+		if ghost_icon:
+			ghost_icon.visible = false
+		return
+	var item_script = drag_item.get_script()
+	if item_script == null or item_script.resource_path != "res://scripts/helmet_item.gd":
+		if ghost_icon:
+			ghost_icon.visible = false
+		return
+	var mouse_pos = get_viewport().get_mouse_position()
+	var canvas_pos = get_viewport().get_canvas_transform().affine_inverse() * mouse_pos
+	var menu_rect = get_global_rect()
+	if menu_rect.has_point(canvas_pos):
+		if ghost_icon:
+			ghost_icon.visible = true
+			ghost_icon.global_position = canvas_pos - ghost_icon.size / 2.0
+		apply_slot_highlight()
+	else:
+		if ghost_icon:
+			ghost_icon.visible = false
+		clear_slot_highlight()
+
+func apply_slot_highlight():
+	if head_slot_highlight:
+		head_slot.add_theme_stylebox_override("panel", head_slot_highlight)
+
+func clear_slot_highlight():
+	if head_slot_style:
+		head_slot.add_theme_stylebox_override("panel", head_slot_style)
+
+func create_highlight_style() -> StyleBoxFlat:
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.2, 0.18, 0.12, 1)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.85, 0.75, 0.45, 1)
+	style.corner_radius_top_left = 3
+	style.corner_radius_top_right = 3
+	style.corner_radius_bottom_right = 3
+	style.corner_radius_bottom_left = 3
+	style.shadow_color = Color(0, 0, 0, 0.4)
+	style.shadow_size = 3
+	return style
 
 func get_player_node() -> Node:
 	var root = get_tree().root.get_child(get_tree().root.get_child_count() - 1)

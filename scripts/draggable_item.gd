@@ -13,6 +13,7 @@ var drag_offset = Vector2.ZERO
 var original_position = Vector2.ZERO
 var world = null
 var player = null
+static var current_drag_item: DraggableItem = null
 
 func _ready():
 	input_pickable = true
@@ -20,6 +21,10 @@ func _ready():
 	player = get_player_node()
 	ensure_collision_shape()
 	set_process_input(true)
+
+func _exit_tree():
+	if current_drag_item == self:
+		current_drag_item = null
 
 func _input(event):
 	handle_drag_input(event)
@@ -34,12 +39,15 @@ func handle_drag_input(event):
 		if event.pressed:
 			if get_pick_rect().has_point(mouse_pos) and can_player_drag():
 				is_dragging = true
-				original_position = global_position
+				current_drag_item = self
+				original_position = snap_to_tile_center(global_position)
 				drag_offset = global_position - mouse_pos
 				get_viewport().set_input_as_handled()
 		else:
 			if is_dragging:
 				is_dragging = false
+				if current_drag_item == self:
+					current_drag_item = null
 				finish_drop()
 				get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion and is_dragging:
@@ -55,8 +63,8 @@ func finish_drop():
 		global_position = original_position
 
 func snap_to_tile_center(world_position: Vector2) -> Vector2:
-	var tile_x = round(world_position.x / TILE_SIZE)
-	var tile_y = round(world_position.y / TILE_SIZE)
+	var tile_x = floor(world_position.x / TILE_SIZE)
+	var tile_y = floor(world_position.y / TILE_SIZE)
 	return Vector2(tile_x * TILE_SIZE + TILE_SIZE / 2, tile_y * TILE_SIZE + TILE_SIZE / 2)
 
 func is_drop_valid(world_position: Vector2) -> bool:
