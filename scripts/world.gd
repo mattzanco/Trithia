@@ -24,7 +24,8 @@ var terrain_textures = {}
 # Fallback terrain colors if textures fail to load
 var terrain_colors = {
 	"grass": Color(76.0/255.0, 153.0/255.0, 51.0/255.0),    # Green
-	"stone": Color(140.0/255.0, 140.0/255.0, 140.0/255.0),  # Gray
+	"dirt": Color(139.0/255.0, 90.0/255.0, 43.0/255.0),     # Brown
+	"sand": Color(194.0/255.0, 178.0/255.0, 128.0/255.0),   # Sandy beige
 	"water": Color(51.0/255.0, 102.0/255.0, 204.0/255.0)    # Blue
 }
 
@@ -37,7 +38,8 @@ func _ready():
 	
 	# Load terrain textures using Image class to bypass import system
 	var grass_image = Image.new()
-	var stone_image = Image.new()
+	var dirt_image = Image.new()
+	var sand_image = Image.new()
 	var water_image = Image.new()
 	
 	if grass_image.load("res://assets/sprites/grass_tile.png") == OK:
@@ -46,11 +48,17 @@ func _ready():
 	else:
 		print("Warning: Failed to load grass texture, using color fallback")
 	
-	if stone_image.load("res://assets/sprites/stone_tile.png") == OK:
-		terrain_textures["stone"] = ImageTexture.create_from_image(stone_image)
-		print("Loaded stone texture")
+	if dirt_image.load("res://assets/sprites/dirt_tile.png") == OK:
+		terrain_textures["dirt"] = ImageTexture.create_from_image(dirt_image)
+		print("Loaded dirt texture")
 	else:
-		print("Warning: Failed to load stone texture, using color fallback")
+		print("Warning: Failed to load dirt texture, using color fallback")
+	
+	if sand_image.load("res://assets/sprites/sand_tile.png") == OK:
+		terrain_textures["sand"] = ImageTexture.create_from_image(sand_image)
+		print("Loaded sand texture")
+	else:
+		print("Warning: Failed to load sand texture, using color fallback")
 	
 	if water_image.load("res://assets/sprites/water_tile.png") == OK:
 		terrain_textures["water"] = ImageTexture.create_from_image(water_image)
@@ -103,11 +111,38 @@ func generate_chunk(chunk_pos: Vector2i):
 			if noise_val < -0.3:
 				terrain_type = "water"
 			elif noise_val > 0.4:
-				terrain_type = "stone"
+				terrain_type = "dirt"
 			
 			# Store terrain type for collision detection
 			var tile_world_pos = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
 			terrain_data[tile_world_pos] = terrain_type
+	
+	# Second pass: convert grass/dirt tiles adjacent to water into sand
+	for x in range(CHUNK_SIZE):
+		for y in range(CHUNK_SIZE):
+			var tile_x = start_x + x
+			var tile_y = start_y + y
+			var tile_world_pos = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
+			
+			if terrain_data[tile_world_pos] in ["grass", "dirt"]:
+				# Check if any adjacent tile is water
+				var is_next_to_water = false
+				for dx in [-1, 0, 1]:
+					for dy in [-1, 0, 1]:
+						if dx == 0 and dy == 0:
+							continue
+						var neighbor_x = tile_x + dx
+						var neighbor_y = tile_y + dy
+						# Check noise directly for neighbors (including those outside current chunk)
+						var neighbor_noise = noise.get_noise_2d(neighbor_x, neighbor_y)
+						if neighbor_noise < -0.3:
+							is_next_to_water = true
+							break
+					if is_next_to_water:
+						break
+				
+				if is_next_to_water:
+					terrain_data[tile_world_pos] = "sand"
 	
 	# Generate spawn points for this chunk
 	generate_spawn_points_for_chunk(chunk_pos)
@@ -122,7 +157,7 @@ func get_terrain_type_from_noise(tile_x: int, tile_y: int) -> String:
 	if noise_val < -0.3:
 		return "water"
 	elif noise_val > 0.4:
-		return "stone"
+		return "dirt"
 	else:
 		return "grass"
 
@@ -247,7 +282,7 @@ func get_terrain_at(world_position: Vector2) -> String:
 	elif noise_val < 0.2:
 		return "grass"
 	else:
-		return "stone"
+		return "dirt"
 func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 	"""Shared pathfinding function used by both player and orcs.
 	

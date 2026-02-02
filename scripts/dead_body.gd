@@ -4,6 +4,10 @@ extends Node2D
 
 const TILE_SIZE = 32
 
+func _ready():
+	# Make sure the body is drawn when added to the scene
+	queue_redraw()
+
 func _draw():
 	# Draw a dead orc lying sideways (pale green) centered in tile
 	var dead_color = Color(0.6, 0.8, 0.6)  # Pale green

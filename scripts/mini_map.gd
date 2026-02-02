@@ -19,7 +19,8 @@ var discovered_tiles = {}  # Dictionary with tile coords as keys
 
 # Colors for the mini-map
 var color_grass = Color(0.4, 0.6, 0.3)
-var color_stone = Color(0.5, 0.5, 0.5)
+var color_dirt = Color(139.0/255.0, 90.0/255.0, 43.0/255.0)
+var color_sand = Color(194.0/255.0, 178.0/255.0, 128.0/255.0)
 var color_water = Color(0.2, 0.4, 0.7)
 var color_player = Color(1.0, 1.0, 0.0)  # Yellow
 var color_enemy = Color(1.0, 0.2, 0.2)  # Red
@@ -104,8 +105,10 @@ func _draw():
 				var tile_color = color_grass
 				if terrain_type == "water":
 					tile_color = color_water
-				elif terrain_type == "stone":
-					tile_color = color_stone
+				elif terrain_type == "dirt":
+					tile_color = color_dirt
+				elif terrain_type == "sand":
+					tile_color = color_sand
 				
 				# Draw the tile
 				draw_rect(Rect2(map_x, map_y, PIXEL_PER_TILE, PIXEL_PER_TILE), tile_color)
