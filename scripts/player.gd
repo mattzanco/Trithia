@@ -1680,6 +1680,9 @@ func die():
 		else:
 			# Fallback to parent if world not found
 			parent.add_child(dead_body)
+	else:
+		# Avoid leaking if no parent is available
+		dead_body.queue_free()
 		
 		# Move the camera to the dead body so it stays centered on it
 		var camera = $Camera2D

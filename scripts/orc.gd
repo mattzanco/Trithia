@@ -1256,6 +1256,9 @@ func die():
 		else:
 			# Fallback to parent if world not found
 			parent.add_child(dead_body)
+	else:
+		# Avoid leaking if no parent is available
+		dead_body.queue_free()
 	
 	
 	# Remove the orc from the scene
