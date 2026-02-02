@@ -1,9 +1,37 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/equipment_menu.gd" id="1_equipment_menu"]
 
+[sub_resource type="StyleBoxFlat" id="1_panel_style"]
+bg_color = Color(0.08, 0.08, 0.1, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.35, 0.3, 0.25, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+shadow_color = Color(0, 0, 0, 0.6)
+shadow_size = 6
+
+[sub_resource type="StyleBoxFlat" id="2_slot_style"]
+bg_color = Color(0.14, 0.12, 0.1, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.5, 0.4, 0.3, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 2
+
 [node name="EquipmentMenu" type="Control"]
-custom_minimum_size = Vector2(150, 180)
+custom_minimum_size = Vector2(150, 190)
 script = ExtResource("1_equipment_menu")
 
 [node name="Panel" type="PanelContainer" parent="."]
@@ -16,74 +44,84 @@ offset_left = 0.0
 offset_top = 0.0
 offset_right = 0.0
 offset_bottom = 0.0
+theme_override_styles/panel = SubResource("1_panel_style")
 
-[node name="VBox" type="VBoxContainer" parent="Panel"]
+[node name="Margin" type="MarginContainer" parent="Panel"]
 anchors_preset = 15
 anchor_left = 0.0
 anchor_top = 0.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 6.0
-offset_top = 6.0
-offset_right = -6.0
-offset_bottom = -6.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
 
-[node name="Title" type="Label" parent="Panel/VBox"]
+[node name="Center" type="CenterContainer" parent="Panel/Margin"]
+anchors_preset = 15
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+
+[node name="VBox" type="VBoxContainer" parent="Panel/Margin/Center"]
+anchors_preset = 15
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+separation = 8
+
+[node name="Title" type="Label" parent="Panel/Margin/Center/VBox"]
 text = "Equipment"
+horizontal_alignment = 1
+modulate = Color(0.9, 0.85, 0.75, 1)
 
-[node name="Slots" type="GridContainer" parent="Panel/VBox"]
-columns = 2
+[node name="SlotGrid" type="GridContainer" parent="Panel/Margin/Center/VBox"]
+columns = 3
+custom_minimum_size = Vector2(120, 120)
+separation = 8
 
-[node name="HeadLabel" type="Label" parent="Panel/VBox/Slots"]
-text = "Head"
+[node name="AmuletSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
+custom_minimum_size = Vector2(32, 32)
+theme_override_styles/panel = SubResource("2_slot_style")
 
-[node name="HeadSlot" type="Panel" parent="Panel/VBox/Slots"]
-custom_minimum_size = Vector2(40, 18)
+[node name="HeadSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
+custom_minimum_size = Vector2(32, 32)
+theme_override_styles/panel = SubResource("2_slot_style")
 
-[node name="ArmorLabel" type="Label" parent="Panel/VBox/Slots"]
-text = "Armor"
+[node name="BackpackSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
+custom_minimum_size = Vector2(32, 32)
+theme_override_styles/panel = SubResource("2_slot_style")
 
-[node name="ArmorSlot" type="Panel" parent="Panel/VBox/Slots"]
-custom_minimum_size = Vector2(40, 18)
+[node name="WeaponSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
+custom_minimum_size = Vector2(32, 32)
+theme_override_styles/panel = SubResource("2_slot_style")
 
-[node name="LegsLabel" type="Label" parent="Panel/VBox/Slots"]
-text = "Legs"
+[node name="ArmorSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
+custom_minimum_size = Vector2(32, 32)
+theme_override_styles/panel = SubResource("2_slot_style")
 
-[node name="LegsSlot" type="Panel" parent="Panel/VBox/Slots"]
-custom_minimum_size = Vector2(40, 18)
+[node name="ShieldSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
+custom_minimum_size = Vector2(32, 32)
+theme_override_styles/panel = SubResource("2_slot_style")
 
-[node name="WeaponLabel" type="Label" parent="Panel/VBox/Slots"]
-text = "Weapon"
+[node name="RingSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
+custom_minimum_size = Vector2(32, 32)
+theme_override_styles/panel = SubResource("2_slot_style")
 
-[node name="WeaponSlot" type="Panel" parent="Panel/VBox/Slots"]
-custom_minimum_size = Vector2(40, 18)
+[node name="LegsSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
+custom_minimum_size = Vector2(32, 32)
+theme_override_styles/panel = SubResource("2_slot_style")
 
-[node name="ShieldLabel" type="Label" parent="Panel/VBox/Slots"]
-text = "Shield"
-
-[node name="ShieldSlot" type="Panel" parent="Panel/VBox/Slots"]
-custom_minimum_size = Vector2(40, 18)
-
-[node name="AmuletLabel" type="Label" parent="Panel/VBox/Slots"]
-text = "Amulet"
-
-[node name="AmuletSlot" type="Panel" parent="Panel/VBox/Slots"]
-custom_minimum_size = Vector2(40, 18)
-
-[node name="RingLabel" type="Label" parent="Panel/VBox/Slots"]
-text = "Ring"
-
-[node name="RingSlot" type="Panel" parent="Panel/VBox/Slots"]
-custom_minimum_size = Vector2(40, 18)
-
-[node name="BootsLabel" type="Label" parent="Panel/VBox/Slots"]
-text = "Boots"
-
-[node name="BootsSlot" type="Panel" parent="Panel/VBox/Slots"]
-custom_minimum_size = Vector2(40, 18)
-
-[node name="BackpackLabel" type="Label" parent="Panel/VBox/Slots"]
-text = "Backpack"
-
-[node name="BackpackSlot" type="Panel" parent="Panel/VBox/Slots"]
-custom_minimum_size = Vector2(40, 18)
+[node name="BootsSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
+custom_minimum_size = Vector2(32, 32)
+theme_override_styles/panel = SubResource("2_slot_style")

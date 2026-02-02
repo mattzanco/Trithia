@@ -11,30 +11,51 @@ func _ready():
 	requires_adjacent = true
 
 func _draw():
-	# Shaded helmet icon (metal gray)
-	var metal = Color(0.7, 0.7, 0.75)
-	var highlight = Color(0.85, 0.85, 0.9)
-	var shadow = Color(0.55, 0.55, 0.6)
-	var outline = Color(0.1, 0.1, 0.1)
+	var texture = get_helmet_texture()
+	if texture:
+		draw_texture(texture, Vector2.ZERO)
 
-	# Dome base
-	draw_rect(Rect2(6, 4, 20, 9), metal)
-	# Highlight
-	draw_rect(Rect2(8, 5, 6, 3), highlight)
-	# Shadow band
-	draw_rect(Rect2(6, 11, 20, 2), shadow)
+static var _helmet_texture: Texture2D = null
 
-	# Rim
-	draw_rect(Rect2(5, 12, 22, 4), metal)
-	# Rim highlight
-	draw_rect(Rect2(7, 12, 6, 2), highlight)
+static func get_helmet_texture() -> Texture2D:
+	if _helmet_texture == null:
+		var img = Image.create(32, 32, false, Image.FORMAT_RGBA8)
+		var metal = Color(0.7, 0.7, 0.75)
+		var highlight = Color(0.85, 0.85, 0.9)
+		var shadow = Color(0.55, 0.55, 0.6)
+		# No outline
+		# Dome base
+		for y in range(6, 18):
+			for x in range(6, 26):
+				img.set_pixel(x, y, metal)
+		# Highlight
+		for y in range(8, 13):
+			for x in range(10, 16):
+				img.set_pixel(x, y, highlight)
+		# Shadow band
+		for y in range(18, 20):
+			for x in range(6, 26):
+				img.set_pixel(x, y, shadow)
+		# Rim
+		for y in range(20, 24):
+			for x in range(4, 28):
+				img.set_pixel(x, y, metal)
+		# Rim highlight
+		for y in range(20, 22):
+			for x in range(8, 14):
+				img.set_pixel(x, y, highlight)
+		_helmet_texture = ImageTexture.create_from_image(img)
+	return _helmet_texture
 
-	# Outline
-	draw_rect(Rect2(6, 4, 20, 9), outline, false, 1.0)
-	draw_rect(Rect2(5, 12, 22, 4), outline, false, 1.0)
+func get_shared_texture() -> Texture2D:
+	return get_helmet_texture()
 
 func finish_drop():
 	if try_equip_in_ui():
+		return
+	# If dropped over UI but not a valid slot, revert to previous position
+	if is_mouse_over_ui():
+		global_position = original_position
 		return
 	super.finish_drop()
 
@@ -45,3 +66,10 @@ func try_equip_in_ui() -> bool:
 	if equip_menu.has_method("try_equip_helmet_from_world"):
 		return equip_menu.try_equip_helmet_from_world(self)
 	return false
+
+func is_mouse_over_ui() -> bool:
+	var viewport = get_viewport()
+	if viewport == null:
+		return false
+	var hovered = viewport.gui_get_hovered_control()
+	return hovered != null
