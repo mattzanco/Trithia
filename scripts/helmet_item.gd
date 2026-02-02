@@ -11,15 +11,27 @@ func _ready():
 	requires_adjacent = true
 
 func _draw():
-	# Simple helmet icon (metal gray)
+	# Shaded helmet icon (metal gray)
 	var metal = Color(0.7, 0.7, 0.75)
+	var highlight = Color(0.85, 0.85, 0.9)
+	var shadow = Color(0.55, 0.55, 0.6)
 	var outline = Color(0.1, 0.1, 0.1)
-	# Dome
-	draw_rect(Rect2(6, 4, 20, 10), metal)
-	draw_rect(Rect2(6, 4, 20, 10), outline, false, 1.0)
+
+	# Dome base
+	draw_rect(Rect2(6, 4, 20, 9), metal)
+	# Highlight
+	draw_rect(Rect2(8, 5, 6, 3), highlight)
+	# Shadow band
+	draw_rect(Rect2(6, 11, 20, 2), shadow)
+
 	# Rim
-	draw_rect(Rect2(6, 12, 20, 4), metal)
-	draw_rect(Rect2(6, 12, 20, 4), outline, false, 1.0)
+	draw_rect(Rect2(5, 12, 22, 4), metal)
+	# Rim highlight
+	draw_rect(Rect2(7, 12, 6, 2), highlight)
+
+	# Outline
+	draw_rect(Rect2(6, 4, 20, 9), outline, false, 1.0)
+	draw_rect(Rect2(5, 12, 22, 4), outline, false, 1.0)
 
 func finish_drop():
 	if try_equip_in_ui():

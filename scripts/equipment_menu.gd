@@ -6,7 +6,7 @@ const TILE_SIZE = 32
 
 var player = null
 var head_slot: Control
-var helmet_icon: ColorRect
+var helmet_icon: TextureRect
 
 var is_dragging = false
 var drag_offset = Vector2.ZERO
@@ -43,11 +43,39 @@ func _input(event):
 func ensure_helmet_icon():
 	if helmet_icon != null:
 		return
-	helmet_icon = ColorRect.new()
-	helmet_icon.color = helmet_color
+	helmet_icon = TextureRect.new()
+	helmet_icon.texture = create_helmet_texture()
 	helmet_icon.size = Vector2(16, 16)
+	helmet_icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 	helmet_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(helmet_icon)
+
+func create_helmet_texture() -> Texture2D:
+	var img = Image.create(16, 16, false, Image.FORMAT_RGBA8)
+	var metal = helmet_color
+	var highlight = Color(0.85, 0.85, 0.9)
+	var outline = Color(0.1, 0.1, 0.1)
+	# Dome
+	for y in range(3, 9):
+		for x in range(3, 13):
+			img.set_pixel(x, y, metal)
+	# Rim
+	for y in range(9, 11):
+		for x in range(2, 14):
+			img.set_pixel(x, y, metal)
+	# Highlight
+	for y in range(4, 7):
+		for x in range(5, 9):
+			img.set_pixel(x, y, highlight)
+	# Outline
+	for x in range(3, 13):
+		img.set_pixel(x, 3, outline)
+	for x in range(2, 14):
+		img.set_pixel(x, 10, outline)
+	for y in range(3, 11):
+		img.set_pixel(2, y, outline)
+		img.set_pixel(13, y, outline)
+	return ImageTexture.create_from_image(img)
 
 func update_helmet_visual():
 	if helmet_icon == null:
