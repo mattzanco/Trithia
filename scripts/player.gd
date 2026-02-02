@@ -173,14 +173,6 @@ func draw_character_front(img: Image, skin: Color, hair: Color, leather: Color, 
 		img.set_pixel(x, 11, outline)
 		img.set_pixel(x, 24, outline)
 
-	# Helmet (if equipped)
-	if has_helmet:
-		for y in range(12, 16):
-			for x in range(9, 23):
-				img.set_pixel(x, y, metal)
-		# Helmet rim
-		for x in range(9, 23):
-			img.set_pixel(x, 12, outline)
 	
 	# Eyes (rows 16-18)
 	for y in range(16, 19):
@@ -350,14 +342,6 @@ func draw_character_back(img: Image, skin: Color, hair: Color, leather: Color, l
 		img.set_pixel(x, 11, outline)
 		img.set_pixel(x, 24, outline)
 
-	# Helmet (if equipped)
-	if has_helmet:
-		for y in range(12, 16):
-			for x in range(9, 23):
-				img.set_pixel(x, y, metal)
-		# Helmet rim
-		for x in range(9, 23):
-			img.set_pixel(x, 12, outline)
 	
 	# Neck - rows 24-27
 	for y in range(24, 28):  # Extended to fill gap
@@ -1014,18 +998,6 @@ func draw_character_side(img: Image, skin: Color, hair: Color, leather: Color, l
 			img.set_pixel(x, 11, outline)
 			img.set_pixel(x, 24, outline)
 
-	# Helmet (if equipped)
-	if has_helmet:
-		for y in range(12, 16):
-			for dx in range(14):
-				var xh = base_x + (dx - 6) * dir
-				if xh >= 0 and xh < 32:
-					img.set_pixel(xh, y, metal)
-		# Helmet rim
-		for dx in range(14):
-			var xr = base_x + (dx - 6) * dir
-			if xr >= 0 and xr < 32:
-				img.set_pixel(xr, 12, outline)
 	
 	# Eye - rows 18-21
 	var eye_x = base_x + 6 * dir
@@ -1239,17 +1211,6 @@ func _unhandled_input(event):
 
 func set_helmet_equipped(equipped: bool):
 	has_helmet = equipped
-	# Rebuild animations to reflect appearance
-	create_player_animations()
-	# Resume current idle direction
-	if current_direction == Vector2.UP:
-		animated_sprite.play("idle_up")
-	elif current_direction == Vector2.LEFT:
-		animated_sprite.play("idle_left")
-	elif current_direction == Vector2.RIGHT:
-		animated_sprite.play("idle_right")
-	else:
-		animated_sprite.play("idle_down")
 
 func handle_target_click(click_position: Vector2):
 	# Convert click position to tile center
