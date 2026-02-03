@@ -204,13 +204,78 @@ func position_container_window():
 	var viewport = get_viewport()
 	if viewport == null:
 		return
-	var camera = viewport.get_camera_2d()
-	if camera == null:
-		return
-	var screen_pos = camera.project_position(global_position)
+	var canvas_transform = viewport.get_canvas_transform()
+	var screen_pos = canvas_transform * global_position
 	# Center the window above the body
 	var offset = Vector2(-container_window.custom_minimum_size.x / 2.0, -container_window.custom_minimum_size.y - 16)
 	container_window.position = screen_pos + offset
+
+func get_slot_index_at_screen_pos(screen_pos: Vector2) -> int:
+	for i in range(container_slots.size()):
+		var slot = container_slots[i]
+		var rect = Rect2(slot.global_position, slot.size)
+		if rect.has_point(screen_pos):
+			return i
+	return -1
+
+func add_item_to_slot(item_type: String, slot_index: int) -> bool:
+	if slot_index < 0 or slot_index >= container_items.size():
+		return false
+	if container_items[slot_index] != null:
+		return false
+	container_items[slot_index] = item_type
+	update_container_slot_visual(slot_index)
+	return true
+
+func add_item_to_first_empty(item_type: String) -> bool:
+	for i in range(container_items.size()):
+		if container_items[i] == null:
+			container_items[i] = item_type
+			update_container_slot_visual(i)
+			return true
+	return false
+
+func get_item_at_slot(slot_index: int) -> String:
+	if slot_index < 0 or slot_index >= container_items.size():
+		return ""
+	return container_items[slot_index] if container_items[slot_index] != null else ""
+
+func remove_item_from_slot(slot_index: int) -> String:
+	if slot_index < 0 or slot_index >= container_items.size():
+		return ""
+	var item_type = container_items[slot_index]
+	if item_type == null:
+		return ""
+	container_items[slot_index] = null
+	update_container_slot_visual(slot_index)
+	return item_type
+
+func update_container_slot_visual(slot_index: int):
+	if slot_index < 0 or slot_index >= container_slots.size():
+		return
+	var slot = container_slots[slot_index]
+	for child in slot.get_children():
+		child.queue_free()
+	var item_type = container_items[slot_index]
+	if item_type == "helmet":
+		var icon = TextureRect.new()
+		icon.texture = get_helmet_texture()
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		icon.anchor_left = 0
+		icon.anchor_top = 0
+		icon.anchor_right = 1
+		icon.anchor_bottom = 1
+
+func get_helmet_texture() -> Texture2D:
+	var helmet_script = load("res://scripts/helmet_item.gd")
+	if helmet_script:
+		var helmet_instance = helmet_script.new()
+		if helmet_instance and helmet_instance.has_method("get_shared_texture"):
+			return helmet_instance.get_shared_texture()
+	return null
 
 func _exit_tree():
 	if container_window and is_instance_valid(container_window):

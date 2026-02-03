@@ -126,6 +126,12 @@ func _input(event):
 				start_bag_icon_drag(event.global_position)
 				get_viewport().set_input_as_handled()
 			else:
+				# Check for dragging from dead body container
+				var body_item = get_body_container_item_at_mouse()
+				if body_item:
+					start_body_item_drag(body_item, event.global_position)
+					get_viewport().set_input_as_handled()
+					return
 				var bag_slot_index = get_bag_slot_at_mouse()
 				if bag_slot_index >= 0 and bag_items[bag_slot_index] == "helmet":
 					start_bag_drag(bag_slot_index, event.global_position)
@@ -294,6 +300,15 @@ func finish_drag(mouse_pos: Vector2):
 		set_helmet_equipped(true)
 		position_icon_in_slot()
 	else:
+		# Check if dropping on dead body container slot
+		var body_target = get_body_container_slot_target()
+		if body_target:
+			set_helmet_equipped(false)
+			var body_ref = body_target["body"]
+			var slot_index = body_target["index"]
+			if body_ref and body_ref.has_method("add_item_to_slot"):
+				if body_ref.add_item_to_slot("helmet", slot_index):
+					return
 		# Check if dropping on a bag slot
 		var bag_slot_index = get_bag_slot_at_mouse()
 		if bag_slot_index >= 0:
@@ -334,11 +349,8 @@ func update_drag_hover_state():
 	if not is_dragging:
 		return
 	var icon_rect = helmet_icon.get_global_rect()
-	var menu_rect = get_global_rect()
-	if icon_rect.intersects(menu_rect):
-		helmet_icon.z_index = 100
-	else:
-		helmet_icon.z_index = 0
+	# Keep helmet icon above other UI while dragging
+	helmet_icon.z_index = 100
 	var head_rect = head_slot.get_global_rect()
 	if icon_rect.intersects(head_rect):
 		apply_slot_highlight()
@@ -463,6 +475,18 @@ func remove_world_helmet():
 
 func try_equip_helmet_from_world(item: Node) -> bool:
 	var mouse_pos = get_global_mouse_position()
+	
+	# Check if dropping on dead body container slot
+	var body_target = get_body_container_slot_target()
+	if body_target:
+		var body_ref = body_target["body"]
+		var slot_index = body_target["index"]
+		if body_ref and body_ref.has_method("add_item_to_slot"):
+			if body_ref.add_item_to_slot("helmet", slot_index):
+				if item:
+					item.queue_free()
+				return true
+		return false
 	
 	# Check if dropping on a bag slot
 	var bag_slot_index = get_bag_slot_at_mouse()
@@ -747,8 +771,8 @@ func is_mouse_on_body_title() -> bool:
 	var mouse_pos = get_global_mouse_position()
 	for child in get_body_container_parents():
 		if child.has_meta("is_body_container") and child.visible:
-			var title_bar = child.find_child("*", true, false)
-			if title_bar and title_bar.has_meta("is_title_bar"):
+			var title_bar = get_body_title_bar(child)
+			if title_bar:
 				var rect = Rect2(title_bar.global_position, title_bar.size)
 				if rect.has_point(mouse_pos):
 					var relative_x = mouse_pos.x - rect.position.x
@@ -760,8 +784,8 @@ func get_body_container_at_title() -> Control:
 	var mouse_pos = get_global_mouse_position()
 	for child in get_body_container_parents():
 		if child.has_meta("is_body_container") and child.visible:
-			var title_bar = child.find_child("*", true, false)
-			if title_bar and title_bar.has_meta("is_title_bar"):
+			var title_bar = get_body_title_bar(child)
+			if title_bar:
 				var rect = Rect2(title_bar.global_position, title_bar.size)
 				if rect.has_point(mouse_pos):
 					var relative_x = mouse_pos.x - rect.position.x
@@ -786,6 +810,53 @@ func get_body_container_parents() -> Array:
 	if parent is CanvasLayer:
 		return parent.get_children()
 	return get_children()
+
+func get_body_title_bar(window: Control) -> Control:
+	var bars = window.find_children("*", "HBoxContainer", true, false)
+	for bar in bars:
+		if bar.has_meta("is_title_bar"):
+			return bar
+	return null
+
+func get_body_container_slot_target() -> Dictionary:
+	var screen_pos = get_viewport().get_mouse_position()
+	for child in get_body_container_parents():
+		if child.has_meta("is_body_container") and child.visible:
+			var body_ref = child.get_meta("body_ref")
+			if body_ref and body_ref.has_method("get_slot_index_at_screen_pos"):
+				var slot_index = body_ref.get_slot_index_at_screen_pos(screen_pos)
+				if slot_index >= 0:
+					return {"body": body_ref, "index": slot_index}
+	return {}
+
+func get_body_container_item_at_mouse() -> Dictionary:
+	var target = get_body_container_slot_target()
+	if target.is_empty():
+		return {}
+	var body_ref = target["body"]
+	var slot_index = target["index"]
+	if body_ref and body_ref.has_method("get_item_at_slot"):
+		var item_type = body_ref.get_item_at_slot(slot_index)
+		if item_type != "":
+			return {"body": body_ref, "index": slot_index, "item": item_type}
+	return {}
+
+func start_body_item_drag(body_item: Dictionary, mouse_pos: Vector2):
+	var body_ref = body_item.get("body", null)
+	var slot_index = body_item.get("index", -1)
+	var item_type = body_item.get("item", "")
+	if body_ref == null or slot_index < 0 or item_type == "":
+		return
+	if item_type == "helmet":
+		if body_ref.has_method("remove_item_from_slot"):
+			var removed = body_ref.remove_item_from_slot(slot_index)
+			if removed == "":
+				return
+		set_helmet_equipped(true)
+		helmet_icon.global_position = mouse_pos
+		is_dragging = true
+		drag_offset = Vector2.ZERO
+		update_drag_hover_state()
 
 func get_bag_slot_at_mouse() -> int:
 	var mouse_pos = get_global_mouse_position()
