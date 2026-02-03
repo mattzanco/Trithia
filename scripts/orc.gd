@@ -3,6 +3,7 @@ extends CharacterBody2D
 # Orc enemy controller
 
 const TILE_SIZE = 32
+const DRAGGABLE_SCRIPT = preload("res://scripts/draggable_item.gd")
 const MOVE_SPEED = 120.0  # Pixels per second
 const WALK_DISTANCE = 3  # How many tiles to walk before changing direction
 const COLLISION_RADIUS = 10.0  # Distance to check for collisions
@@ -116,6 +117,15 @@ func _ready():
 	set_meta("intelligence", intelligence)
 	set_meta("dexterity", dexterity)
 	set_meta("speed", speed)
+	set_process_input(true)
+
+func _input(event):
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and event.shift_pressed:
+		var mouse_pos = get_global_mouse_position()
+		if get_pick_rect().has_point(mouse_pos):
+			DRAGGABLE_SCRIPT.show_center_text(get_enemy_description(), self)
+			get_viewport().set_input_as_handled()
+			return
 
 func create_orc_animations():
 	var sprite_frames = SpriteFrames.new()
@@ -168,6 +178,16 @@ func create_orc_frame(direction: Vector2, frame: int) -> ImageTexture:
 	
 	var texture = ImageTexture.create_from_image(img)
 	return texture
+
+func get_pick_rect() -> Rect2:
+	if animated_sprite:
+		var rect = animated_sprite.get_rect()
+		rect.position += animated_sprite.global_position
+		return rect
+	return Rect2(global_position + Vector2(-16, -56), Vector2(32, 64))
+
+func get_enemy_description() -> String:
+	return "Orc\nHP: %d/%d\nSTR: %d  DEX: %d  INT: %d" % [current_health, max_health, strength, dexterity, intelligence]
 
 func draw_orc_front(img: Image, skin: Color, dark_skin: Color, hair: Color, muscle: Color, pants: Color, outline: Color, metal: Color, handle: Color, walk_frame: int):
 	# Head (rows 12-23)

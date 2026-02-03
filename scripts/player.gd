@@ -4,6 +4,7 @@ extends CharacterBody2D
 
 const TILE_SIZE = 32
 const MOVE_SPEED = 150.0  # Pixels per second
+const DRAGGABLE_SCRIPT = preload("res://scripts/draggable_item.gd")
 
 var is_moving = false
 var target_position = Vector2.ZERO
@@ -1197,6 +1198,10 @@ func _unhandled_input(event):
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 			var click_position = get_global_mouse_position()
+			if event.shift_pressed:
+				handle_shift_click(click_position)
+				get_viewport().set_input_as_handled()
+				return
 			move_to_position(click_position)
 			get_viewport().set_input_as_handled()
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
@@ -1211,6 +1216,49 @@ func _unhandled_input(event):
 
 func set_helmet_equipped(equipped: bool):
 	has_helmet = equipped
+
+func handle_shift_click(click_position: Vector2):
+	var enemy = get_enemy_at_click(click_position)
+	if enemy:
+		var desc = enemy.get_enemy_description() if enemy.has_method("get_enemy_description") else "Enemy"
+		DRAGGABLE_SCRIPT.show_center_text(desc, self)
+		return
+	var tile_x = int(floor(click_position.x / TILE_SIZE))
+	var tile_y = int(floor(click_position.y / TILE_SIZE))
+	var tile_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
+	var world = get_world_node()
+	var terrain_type = "unknown"
+	if world and world.has_method("get_terrain_type_from_noise"):
+		terrain_type = world.get_terrain_type_from_noise(tile_x, tile_y)
+	var is_walkable = false
+	if world and world.has_method("is_walkable"):
+		is_walkable = world.is_walkable(tile_center)
+	var info_text = "Tile (%d, %d)\nTerrain: %s\nWalkable: %s" % [tile_x, tile_y, terrain_type, "Yes" if is_walkable else "No"]
+	DRAGGABLE_SCRIPT.show_center_text(info_text, self)
+
+func get_enemy_at_click(click_position: Vector2) -> Node:
+	var clicked_tile_x = floor(click_position.x / TILE_SIZE)
+	var clicked_tile_y = floor(click_position.y / TILE_SIZE)
+	var clicked_tile_center = Vector2(clicked_tile_x * TILE_SIZE + TILE_SIZE/2, clicked_tile_y * TILE_SIZE + TILE_SIZE/2)
+	var parent = get_parent()
+	if parent:
+		for child in parent.get_children():
+			if child != self and child.get_script() != null and child.get_script().resource_path == "res://scripts/orc.gd":
+				var orc_targetable_tile = child.position + Vector2(0, TILE_SIZE/2)
+				var orc_targetable_tile_x = floor(orc_targetable_tile.x / TILE_SIZE)
+				var orc_targetable_tile_y = floor(orc_targetable_tile.y / TILE_SIZE)
+				var orc_targetable_tile_center = Vector2(orc_targetable_tile_x * TILE_SIZE + TILE_SIZE/2, orc_targetable_tile_y * TILE_SIZE + TILE_SIZE/2)
+				if clicked_tile_center == orc_targetable_tile_center:
+					return child
+	return null
+
+func get_world_node() -> Node:
+	var parent = get_parent()
+	if parent:
+		var world_node = parent.get_node_or_null("World")
+		if world_node:
+			return world_node
+	return get_tree().get_root().find_child("World", true, false)
 
 func handle_target_click(click_position: Vector2):
 	# Convert click position to tile center

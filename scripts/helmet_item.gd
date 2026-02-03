@@ -12,10 +12,22 @@ func _ready():
 	# Center pick rect to match centered draw
 	pick_rect_offset = -pick_rect_size / 2.0
 
+func _input(event):
+	super._input(event)
+
+func equip_helmet():
+	var player = get_player_node()
+	if player and player.has_method("set_helmet_equipped"):
+		player.set_helmet_equipped(true)
+		queue_free()
+
 func _draw():
 	var texture = get_helmet_texture()
 	if texture:
 		draw_texture(texture, -texture.get_size() / 2.0)
+
+func get_item_description() -> String:
+	return "Helmet\nProtects your head."
 
 static var _helmet_texture: Texture2D = null
 
