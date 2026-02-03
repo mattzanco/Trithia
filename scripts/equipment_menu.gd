@@ -398,16 +398,20 @@ func create_highlight_style() -> StyleBoxFlat:
 	return style
 
 func get_player_node() -> Node:
-	var root = get_tree().root.get_child(get_tree().root.get_child_count() - 1)
+	var root = get_tree().get_root()
 	return root.find_child("Player", true, false)
 
 func get_world_node() -> Node:
-	var root = get_tree().root.get_child(get_tree().root.get_child_count() - 1)
+	var root = get_tree().get_root()
 	return root.find_child("World", true, false)
 
 func spawn_helmet_in_world_at(screen_pos: Vector2):
 	if helmet_world_item != null:
-		return
+		if is_instance_valid(helmet_world_item) and not helmet_world_item.is_queued_for_deletion():
+			var world_pos_existing = screen_to_world_position(get_viewport().get_mouse_position())
+			helmet_world_item.position = snap_to_tile_center(world_pos_existing)
+			return
+		helmet_world_item = null
 	if player == null:
 		player = get_player_node()
 	if player == null:
@@ -418,7 +422,7 @@ func spawn_helmet_in_world_at(screen_pos: Vector2):
 	var helmet_item = Area2D.new()
 	helmet_item_setup(helmet_item)
 	# Place at mouse drop tile in world space
-	var world_pos = screen_to_world_position(screen_pos)
+	var world_pos = screen_to_world_position(get_viewport().get_mouse_position())
 	var snapped = snap_to_tile_center(world_pos)
 	helmet_item.position = snapped
 	helmet_item.z_index = 0
@@ -439,8 +443,11 @@ func screen_to_world_position(screen_pos: Vector2) -> Vector2:
 	if viewport == null:
 		return screen_pos
 	var camera = viewport.get_camera_2d()
-	if camera and camera.has_method("screen_to_world"):
-		return camera.screen_to_world(screen_pos)
+	if camera:
+		if camera.has_method("unproject_position"):
+			return camera.unproject_position(screen_pos)
+		if camera.has_method("screen_to_world"):
+			return camera.screen_to_world(screen_pos)
 	# Fallback for CanvasLayer/UI transforms
 	var canvas_transform = viewport.get_canvas_transform()
 	return canvas_transform.affine_inverse() * screen_pos
