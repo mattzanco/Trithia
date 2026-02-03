@@ -57,6 +57,9 @@ func _exit_tree():
 	if helmet_world_item and is_instance_valid(helmet_world_item):
 		helmet_world_item.queue_free()
 		helmet_world_item = null
+	if backpack_world_item and is_instance_valid(backpack_world_item):
+		backpack_world_item.queue_free()
+		backpack_world_item = null
 	if ghost_layer and is_instance_valid(ghost_layer):
 		ghost_layer.queue_free()
 		ghost_layer = null
@@ -64,16 +67,40 @@ func _exit_tree():
 	if helmet_icon and is_instance_valid(helmet_icon):
 		helmet_icon.queue_free()
 		helmet_icon = null
+	if bag_icon and is_instance_valid(bag_icon):
+		bag_icon.queue_free()
+		bag_icon = null
+	if bag_container and is_instance_valid(bag_container):
+		bag_container.queue_free()
+		bag_container = null
 
 func _process(_delta):
 	# Keep UI in sync when not dragging
 	if not is_dragging:
 		update_helmet_visual()
 	update_bag_visual()
+	close_bag_if_not_adjacent()
 	if ghost_icon == null:
 		ensure_ghost_icon()
 	update_drag_hover_state()
 	update_world_drag_preview()
+
+func close_bag_if_not_adjacent():
+	if bag_container == null or not bag_container.visible:
+		return
+	if backpack_world_item == null or not is_instance_valid(backpack_world_item):
+		return
+	if player == null:
+		player = get_player_node()
+	if player == null:
+		return
+	var player_feet_pos = player.global_position + Vector2(0, TILE_SIZE / 2)
+	var player_tile = get_tile_coords(player_feet_pos)
+	var bag_tile = get_tile_coords(backpack_world_item.global_position)
+	var dx = abs(player_tile.x - bag_tile.x)
+	var dy = abs(player_tile.y - bag_tile.y)
+	if dx > 1 or dy > 1:
+		bag_container.visible = false
 
 func _input(event):
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -344,6 +371,9 @@ func get_head_slot_rect() -> Rect2:
 
 func is_point_in_rect(point: Vector2, rect: Rect2) -> bool:
 	return rect.has_point(point)
+
+func get_tile_coords(world_position: Vector2) -> Vector2i:
+	return Vector2i(int(floor(world_position.x / TILE_SIZE)), int(floor(world_position.y / TILE_SIZE)))
 
 func update_drag_hover_state():
 	if not is_dragging:

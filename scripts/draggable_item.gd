@@ -33,6 +33,7 @@ func _exit_tree():
 	if current_drag_item == self:
 		current_drag_item = null
 	cleanup_drag_layer()
+	cleanup_info_layer()
 
 func _input(event):
 	handle_drag_input(event)
@@ -222,4 +223,12 @@ static func show_center_text(text: String, owner: Node, duration: float = 1.5):
 		if token == info_token and is_instance_valid(info_label):
 			info_label.visible = false
 	)
+
+static func cleanup_info_layer():
+	if info_label and is_instance_valid(info_label):
+		info_label.queue_free()
+		info_label = null
+	if info_layer and is_instance_valid(info_layer):
+		info_layer.queue_free()
+		info_layer = null
 
