@@ -180,10 +180,16 @@ func create_orc_frame(direction: Vector2, frame: int) -> ImageTexture:
 	return texture
 
 func get_pick_rect() -> Rect2:
-	if animated_sprite:
-		var rect = animated_sprite.get_rect()
-		rect.position += animated_sprite.global_position
-		return rect
+	if animated_sprite and animated_sprite.sprite_frames:
+		var anim_name = animated_sprite.animation
+		if anim_name == "":
+			anim_name = animated_sprite.sprite_frames.get_animation_names()[0] if animated_sprite.sprite_frames.get_animation_names().size() > 0 else ""
+		if anim_name != "":
+			var frame_tex = animated_sprite.sprite_frames.get_frame_texture(anim_name, 0)
+			if frame_tex:
+				var size = frame_tex.get_size()
+				var top_left = animated_sprite.global_position + animated_sprite.offset - size / 2.0
+				return Rect2(top_left, size)
 	return Rect2(global_position + Vector2(-16, -56), Vector2(32, 64))
 
 func get_enemy_description() -> String:

@@ -883,9 +883,11 @@ func start_body_item_drag(body_item: Dictionary, mouse_pos: Vector2):
 			if removed == "":
 				return
 		set_helmet_equipped(true)
-		helmet_icon.global_position = mouse_pos
+		if body_ref.has_method("get_slot_rect"):
+			var slot_rect = body_ref.get_slot_rect(slot_index)
+			helmet_icon.global_position = slot_rect.position + (slot_rect.size - helmet_icon.size) / 2.0
 		is_dragging = true
-		drag_offset = Vector2.ZERO
+		drag_offset = helmet_icon.global_position - mouse_pos
 		update_drag_hover_state()
 
 func get_bag_slot_at_mouse() -> int:
@@ -922,8 +924,10 @@ func start_bag_drag(slot_index: int, mouse_pos: Vector2):
 	
 	# Equip and start dragging
 	set_helmet_equipped(true)
-	# Position icon at mouse before starting drag to avoid snap
-	helmet_icon.global_position = mouse_pos
+	# Position icon at slot center to preserve click offset
+	var slot = bag_slots[slot_index]
+	var slot_rect = Rect2(slot.global_position, slot.size)
+	helmet_icon.global_position = slot_rect.position + (slot_rect.size - helmet_icon.size) / 2.0
 	is_dragging = true
-	drag_offset = Vector2.ZERO
+	drag_offset = helmet_icon.global_position - mouse_pos
 	update_drag_hover_state()

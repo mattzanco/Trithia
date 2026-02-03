@@ -240,6 +240,12 @@ func get_item_at_slot(slot_index: int) -> String:
 		return ""
 	return container_items[slot_index] if container_items[slot_index] != null else ""
 
+func get_slot_rect(slot_index: int) -> Rect2:
+	if slot_index < 0 or slot_index >= container_slots.size():
+		return Rect2()
+	var slot = container_slots[slot_index]
+	return Rect2(slot.global_position, slot.size)
+
 func remove_item_from_slot(slot_index: int) -> String:
 	if slot_index < 0 or slot_index >= container_items.size():
 		return ""
