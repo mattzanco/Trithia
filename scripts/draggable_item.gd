@@ -149,7 +149,15 @@ func start_drag_rendering():
 	get_viewport().add_child(drag_canvas_layer)
 	
 	# Create visual clone on the canvas layer
-	drag_visual = Node2D.new()
+	drag_visual = Area2D.new()
+	drag_visual.input_pickable = false
+	drag_visual.monitoring = false
+	drag_visual.monitorable = false
+	drag_visual.set_process(false)
+	drag_visual.set_physics_process(false)
+	drag_visual.set_process_input(false)
+	drag_visual.set_process_unhandled_input(false)
+	drag_visual.set_process_unhandled_key_input(false)
 	drag_canvas_layer.add_child(drag_visual)
 	
 	# Copy the visual from this item

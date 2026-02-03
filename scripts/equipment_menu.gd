@@ -35,7 +35,7 @@ var window_drag_offset = Vector2.ZERO
 var equipment_title: Label
 var bag_title: Label
 var bag_title_bar: HBoxContainer
-var scroll_container: ScrollContainer
+var bag_grid: GridContainer
 
 func _ready():
 	player = get_player_node()
@@ -171,7 +171,8 @@ func _input(event):
 			new_size.y = max(180, new_size.y)
 			bag_container.custom_minimum_size = new_size
 			bag_container.size = new_size
-			scroll_container.custom_minimum_size = Vector2(new_size.x - 32, new_size.y - 80)
+			if bag_grid:
+				bag_grid.custom_minimum_size = Vector2(new_size.x - 32, new_size.y - 80)
 			get_viewport().set_input_as_handled()
 		elif dragging_bag_window:
 			bag_container.position = event.global_position + window_drag_offset
@@ -237,14 +238,14 @@ func ensure_ghost_icon():
 		return
 	ghost_layer = CanvasLayer.new()
 	ghost_layer.layer = 1000
-	get_viewport().add_child(ghost_layer)
+	get_viewport().add_child.call_deferred(ghost_layer)
 	ghost_icon = TextureRect.new()
 	ghost_icon.texture = create_helmet_texture()
 	ghost_icon.size = Vector2(32, 32)
 	ghost_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	ghost_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ghost_icon.visible = false
-	ghost_layer.add_child(ghost_icon)
+	ghost_layer.add_child.call_deferred(ghost_icon)
 
 func create_helmet_texture() -> Texture2D:
 	var helmet_script = load("res://scripts/helmet_item.gd")
@@ -660,8 +661,7 @@ func create_bag_container():
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title_bar.add_child(title)
 	
-	bag_title = title  # Store referencel = Control.SIZE_EXPAND_FILL
-	title_bar.add_child(title)
+	bag_title = title  # Store reference
 	
 	var close_button = Button.new()
 	close_button.text = "X"
@@ -670,16 +670,14 @@ func create_bag_container():
 	close_button.pressed.connect(func(): bag_container.visible = false)
 	title_bar.add_child(close_button)
 	
-	# ScrollContainer for the grid
-	scroll_container = ScrollContainer.new()
-	scroll_container.custom_minimum_size = Vector2(160, 150)
-	vbox.add_child(scroll_container)
-	
+	# Grid for items (no scroll bar)
 	var grid = GridContainer.new()
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 4)
 	grid.add_theme_constant_override("v_separation", 4)
-	scroll_container.add_child(grid)
+	grid.custom_minimum_size = Vector2(160, 150)
+	vbox.add_child(grid)
+	bag_grid = grid
 	
 	var slot_style = StyleBoxFlat.new()
 	slot_style.bg_color = Color(0.14, 0.12, 0.1, 1)
@@ -740,7 +738,7 @@ func is_mouse_on_bag_resize_handle() -> bool:
 
 func is_mouse_on_body_title() -> bool:
 	var mouse_pos = get_global_mouse_position()
-	for child in get_children():
+	for child in get_body_container_parents():
 		if child.has_meta("is_body_container") and child.visible:
 			var title_bar = child.find_child("*", true, false)
 			if title_bar and title_bar.has_meta("is_title_bar"):
@@ -753,7 +751,7 @@ func is_mouse_on_body_title() -> bool:
 
 func get_body_container_at_title() -> Control:
 	var mouse_pos = get_global_mouse_position()
-	for child in get_children():
+	for child in get_body_container_parents():
 		if child.has_meta("is_body_container") and child.visible:
 			var title_bar = child.find_child("*", true, false)
 			if title_bar and title_bar.has_meta("is_title_bar"):
@@ -766,7 +764,7 @@ func get_body_container_at_title() -> Control:
 
 func get_body_container_at_resize_handle() -> Control:
 	var mouse_pos = get_global_mouse_position()
-	for child in get_children():
+	for child in get_body_container_parents():
 		if child.has_meta("is_body_container") and child.visible:
 			var resize_area = Rect2(
 				child.global_position + child.size - Vector2(20, 20),
@@ -775,6 +773,12 @@ func get_body_container_at_resize_handle() -> Control:
 			if resize_area.has_point(mouse_pos):
 				return child
 	return null
+
+func get_body_container_parents() -> Array:
+	var parent = get_parent()
+	if parent is CanvasLayer:
+		return parent.get_children()
+	return get_children()
 
 func get_bag_slot_at_mouse() -> int:
 	var mouse_pos = get_global_mouse_position()
