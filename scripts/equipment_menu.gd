@@ -354,11 +354,13 @@ func update_world_drag_preview():
 	if drag_item == null:
 		if ghost_icon:
 			ghost_icon.visible = false
+		clear_slot_highlight()
 		return
 	var item_script = drag_item.get_script()
 	if item_script == null or item_script.resource_path != "res://scripts/helmet_item.gd":
 		if ghost_icon:
 			ghost_icon.visible = false
+		clear_slot_highlight()
 		return
 	var mouse_pos = get_viewport().get_mouse_position()
 	var canvas_pos = get_viewport().get_canvas_transform().affine_inverse() * mouse_pos
@@ -374,12 +376,10 @@ func update_world_drag_preview():
 		clear_slot_highlight()
 
 func apply_slot_highlight():
-	if head_slot_highlight:
-		head_slot.add_theme_stylebox_override("panel", head_slot_highlight)
+	return
 
 func clear_slot_highlight():
-	if head_slot_style:
-		head_slot.add_theme_stylebox_override("panel", head_slot_style)
+	return
 
 func create_highlight_style() -> StyleBoxFlat:
 	var style = StyleBoxFlat.new()
