@@ -163,6 +163,7 @@ func _process(_delta):
 		update_boots_visual()
 	update_bag_visual()
 	close_bag_if_not_adjacent()
+	clamp_bag_container_to_viewport()
 	if ghost_icon == null:
 		ensure_ghost_icon()
 	update_drag_hover_state()
@@ -349,13 +350,18 @@ func _input(event):
 			var new_size = event.global_position + window_drag_offset
 			new_size.x = max(180, new_size.x)
 			new_size.y = max(180, new_size.y)
+			var max_size = get_viewport_safe_size()
+			new_size.x = min(new_size.x, max_size.x)
+			new_size.y = min(new_size.y, max_size.y)
 			bag_container.custom_minimum_size = new_size
 			bag_container.size = new_size
 			if bag_grid:
 				bag_grid.custom_minimum_size = Vector2(new_size.x - 32, new_size.y - 80)
+			clamp_bag_container_to_viewport()
 			get_viewport().set_input_as_handled()
 		elif dragging_bag_window:
 			bag_container.position = event.global_position + window_drag_offset
+			clamp_bag_container_to_viewport()
 			get_viewport().set_input_as_handled()
 		elif is_dragging_club:
 			move_club_icon(event.global_position)
@@ -658,18 +664,26 @@ func start_drag(mouse_pos: Vector2):
 
 func start_club_drag(mouse_pos: Vector2):
 	is_dragging_club = true
+	if club_icon:
+		club_icon.z_index = 100
 	club_drag_offset = club_icon.global_position - mouse_pos
 
 func start_armor_drag(mouse_pos: Vector2):
 	is_dragging_armor = true
+	if armor_icon:
+		armor_icon.z_index = 100
 	armor_drag_offset = armor_icon.global_position - mouse_pos
 
 func start_pants_drag(mouse_pos: Vector2):
 	is_dragging_pants = true
+	if pants_icon:
+		pants_icon.z_index = 100
 	pants_drag_offset = pants_icon.global_position - mouse_pos
 
 func start_boots_drag(mouse_pos: Vector2):
 	is_dragging_boots = true
+	if boots_icon:
+		boots_icon.z_index = 100
 	boots_drag_offset = boots_icon.global_position - mouse_pos
 
 func move_club_icon(mouse_pos: Vector2):
@@ -720,6 +734,8 @@ func finish_drag(mouse_pos: Vector2):
 
 func finish_club_drag(mouse_pos: Vector2):
 	is_dragging_club = false
+	if club_icon:
+		club_icon.z_index = 0
 	# Check if dropping on weapon slot
 	if is_point_in_rect(mouse_pos, get_weapon_slot_rect()):
 		set_club_equipped("weapon")
@@ -753,6 +769,8 @@ func finish_club_drag(mouse_pos: Vector2):
 
 func finish_armor_drag(mouse_pos: Vector2):
 	is_dragging_armor = false
+	if armor_icon:
+		armor_icon.z_index = 0
 	# Check if dropping on armor slot
 	if is_point_in_rect(mouse_pos, get_armor_slot_rect()):
 		set_armor_equipped(true)
@@ -781,6 +799,8 @@ func finish_armor_drag(mouse_pos: Vector2):
 
 func finish_pants_drag(mouse_pos: Vector2):
 	is_dragging_pants = false
+	if pants_icon:
+		pants_icon.z_index = 0
 	# Check if dropping on legs slot
 	if is_point_in_rect(mouse_pos, get_legs_slot_rect()):
 		set_pants_equipped(true)
@@ -809,6 +829,8 @@ func finish_pants_drag(mouse_pos: Vector2):
 
 func finish_boots_drag(mouse_pos: Vector2):
 	is_dragging_boots = false
+	if boots_icon:
+		boots_icon.z_index = 0
 	# Check if dropping on boots slot
 	if is_point_in_rect(mouse_pos, get_boots_slot_rect()):
 		set_boots_equipped(true)
@@ -1563,7 +1585,7 @@ func create_bag_container():
 	vbox.add_theme_constant_override("separation", 4)
 	margin.add_child(vbox)
 	
-	# Title bar with close button
+	# Title bar
 	var title_bar = HBoxContainer.new()
 	vbox.add_child(title_bar)
 	bag_title_bar = title_bar  # Store reference for dragging
@@ -1576,13 +1598,6 @@ func create_bag_container():
 	title_bar.add_child(title)
 	
 	bag_title = title  # Store reference
-	
-	var close_button = Button.new()
-	close_button.text = "X"
-	close_button.custom_minimum_size = Vector2(20, 20)
-	close_button.modulate = Color(0.9, 0.85, 0.75, 1)
-	close_button.pressed.connect(func(): bag_container.visible = false)
-	title_bar.add_child(close_button)
 	
 	# Grid for items (no scroll bar)
 	var grid = GridContainer.new()
@@ -1622,6 +1637,34 @@ func create_bag_container():
 func toggle_bag_container():
 	if bag_container:
 		bag_container.visible = not bag_container.visible
+		if bag_container.visible:
+			clamp_bag_container_to_viewport()
+
+func get_viewport_safe_size() -> Vector2:
+	var viewport = get_viewport()
+	if viewport == null:
+		return Vector2(99999, 99999)
+	return viewport.get_visible_rect().size - Vector2(8, 8)
+
+func clamp_bag_container_to_viewport():
+	if bag_container == null or not bag_container.visible:
+		return
+	var viewport = get_viewport()
+	if viewport == null:
+		return
+	var rect = viewport.get_visible_rect()
+	var size = bag_container.size
+	if size == Vector2.ZERO:
+		size = bag_container.custom_minimum_size
+	var padding = Vector2(4, 4)
+	var min_pos = rect.position + padding
+	var max_pos = rect.position + rect.size - size - padding
+	max_pos.x = max(min_pos.x, max_pos.x)
+	max_pos.y = max(min_pos.y, max_pos.y)
+	var new_pos = bag_container.global_position
+	new_pos.x = clamp(new_pos.x, min_pos.x, max_pos.x)
+	new_pos.y = clamp(new_pos.y, min_pos.y, max_pos.y)
+	bag_container.global_position = new_pos
 
 func is_mouse_on_equipment_title() -> bool:
 	if equipment_title == null:
@@ -1633,13 +1676,7 @@ func is_mouse_on_bag_title() -> bool:
 	if bag_title_bar == null or not bag_container.visible:
 		return false
 	var rect = Rect2(bag_title_bar.global_position, bag_title_bar.size)
-	var mouse_pos = get_global_mouse_position()
-	# Exclude the close button area (rightmost 20 pixels)
-	if rect.has_point(mouse_pos):
-		var relative_x = mouse_pos.x - rect.position.x
-		if relative_x < rect.size.x - 25:  # Leave some margin for close button
-			return true
-	return false
+	return rect.has_point(get_global_mouse_position())
 
 func is_mouse_on_bag_resize_handle() -> bool:
 	if bag_container == null or not bag_container.visible:
@@ -1658,9 +1695,7 @@ func is_mouse_on_body_title() -> bool:
 			if title_bar:
 				var rect = Rect2(title_bar.global_position, title_bar.size)
 				if rect.has_point(mouse_pos):
-					var relative_x = mouse_pos.x - rect.position.x
-					if relative_x < rect.size.x - 25:
-						return true
+					return true
 	return false
 
 func get_body_container_at_title() -> Control:
@@ -1671,9 +1706,7 @@ func get_body_container_at_title() -> Control:
 			if title_bar:
 				var rect = Rect2(title_bar.global_position, title_bar.size)
 				if rect.has_point(mouse_pos):
-					var relative_x = mouse_pos.x - rect.position.x
-					if relative_x < rect.size.x - 25:
-						return child
+					return child
 	return null
 
 func get_body_container_at_resize_handle() -> Control:
@@ -1751,6 +1784,7 @@ func start_body_item_drag(body_item: Dictionary, mouse_pos: Vector2):
 		if body_ref.has_method("get_slot_rect"):
 			var slot_rect = body_ref.get_slot_rect(slot_index)
 			club_icon.global_position = slot_rect.position + (slot_rect.size - club_icon.size) / 2.0
+		club_icon.z_index = 100
 		is_dragging_club = true
 		club_drag_offset = club_icon.global_position - mouse_pos
 	elif item_type == "armor":
@@ -1762,6 +1796,7 @@ func start_body_item_drag(body_item: Dictionary, mouse_pos: Vector2):
 		if body_ref.has_method("get_slot_rect"):
 			var slot_rect = body_ref.get_slot_rect(slot_index)
 			armor_icon.global_position = slot_rect.position + (slot_rect.size - armor_icon.size) / 2.0
+		armor_icon.z_index = 100
 		is_dragging_armor = true
 		armor_drag_offset = armor_icon.global_position - mouse_pos
 	elif item_type == "pants":
@@ -1773,6 +1808,7 @@ func start_body_item_drag(body_item: Dictionary, mouse_pos: Vector2):
 		if body_ref.has_method("get_slot_rect"):
 			var slot_rect = body_ref.get_slot_rect(slot_index)
 			pants_icon.global_position = slot_rect.position + (slot_rect.size - pants_icon.size) / 2.0
+		pants_icon.z_index = 100
 		is_dragging_pants = true
 		pants_drag_offset = pants_icon.global_position - mouse_pos
 	elif item_type == "boots":
@@ -1784,6 +1820,7 @@ func start_body_item_drag(body_item: Dictionary, mouse_pos: Vector2):
 		if body_ref.has_method("get_slot_rect"):
 			var slot_rect = body_ref.get_slot_rect(slot_index)
 			boots_icon.global_position = slot_rect.position + (slot_rect.size - boots_icon.size) / 2.0
+		boots_icon.z_index = 100
 		is_dragging_boots = true
 		boots_drag_offset = boots_icon.global_position - mouse_pos
 
@@ -1832,20 +1869,24 @@ func start_bag_drag(slot_index: int, mouse_pos: Vector2):
 	elif item_type == "club":
 		set_club_equipped("weapon")
 		club_icon.global_position = slot_rect.position + (slot_rect.size - club_icon.size) / 2.0
+		club_icon.z_index = 100
 		is_dragging_club = true
 		club_drag_offset = club_icon.global_position - mouse_pos
 	elif item_type == "armor":
 		set_armor_equipped(true)
 		armor_icon.global_position = slot_rect.position + (slot_rect.size - armor_icon.size) / 2.0
+		armor_icon.z_index = 100
 		is_dragging_armor = true
 		armor_drag_offset = armor_icon.global_position - mouse_pos
 	elif item_type == "pants":
 		set_pants_equipped(true)
 		pants_icon.global_position = slot_rect.position + (slot_rect.size - pants_icon.size) / 2.0
+		pants_icon.z_index = 100
 		is_dragging_pants = true
 		pants_drag_offset = pants_icon.global_position - mouse_pos
 	elif item_type == "boots":
 		set_boots_equipped(true)
 		boots_icon.global_position = slot_rect.position + (slot_rect.size - boots_icon.size) / 2.0
+		boots_icon.z_index = 100
 		is_dragging_boots = true
 		boots_drag_offset = boots_icon.global_position - mouse_pos

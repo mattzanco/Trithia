@@ -141,7 +141,7 @@ func create_container_window():
 	vbox.add_theme_constant_override("separation", 4)
 	margin.add_child(vbox)
 	
-	# Title bar with close button
+	# Title bar
 	var title_bar = HBoxContainer.new()
 	title_bar.set_meta("is_title_bar", true)
 	title_bar.set_meta("body_ref", self)
@@ -153,13 +153,6 @@ func create_container_window():
 	title.modulate = Color(0.9, 0.85, 0.75, 1)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title_bar.add_child(title)
-	
-	var close_button = Button.new()
-	close_button.text = "X"
-	close_button.custom_minimum_size = Vector2(20, 20)
-	close_button.modulate = Color(0.9, 0.85, 0.75, 1)
-	close_button.pressed.connect(func(): container_window.visible = false)
-	title_bar.add_child(close_button)
 	
 	# Grid for items
 	var grid = GridContainer.new()
