@@ -274,6 +274,39 @@ func update_container_slot_visual(slot_index: int):
 		icon.anchor_top = 0
 		icon.anchor_right = 1
 		icon.anchor_bottom = 1
+	elif item_type == "club":
+		var icon = TextureRect.new()
+		icon.texture = get_club_texture()
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		icon.anchor_left = 0
+		icon.anchor_top = 0
+		icon.anchor_right = 1
+		icon.anchor_bottom = 1
+	elif item_type == "armor":
+		var icon = TextureRect.new()
+		icon.texture = get_armor_texture()
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		icon.anchor_left = 0
+		icon.anchor_top = 0
+		icon.anchor_right = 1
+		icon.anchor_bottom = 1
+	elif item_type == "pants":
+		var icon = TextureRect.new()
+		icon.texture = get_pants_texture()
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		icon.anchor_left = 0
+		icon.anchor_top = 0
+		icon.anchor_right = 1
+		icon.anchor_bottom = 1
 
 func get_helmet_texture() -> Texture2D:
 	var helmet_script = load("res://scripts/helmet_item.gd")
@@ -281,6 +314,30 @@ func get_helmet_texture() -> Texture2D:
 		var helmet_instance = helmet_script.new()
 		if helmet_instance and helmet_instance.has_method("get_shared_texture"):
 			return helmet_instance.get_shared_texture()
+	return null
+
+func get_club_texture() -> Texture2D:
+	var club_script = load("res://scripts/club_item.gd")
+	if club_script:
+		var club_instance = club_script.new()
+		if club_instance and club_instance.has_method("get_shared_texture"):
+			return club_instance.get_shared_texture()
+	return null
+
+func get_armor_texture() -> Texture2D:
+	var armor_script = load("res://scripts/cloth_armor_item.gd")
+	if armor_script:
+		var armor_instance = armor_script.new()
+		if armor_instance and armor_instance.has_method("get_shared_texture"):
+			return armor_instance.get_shared_texture()
+	return null
+
+func get_pants_texture() -> Texture2D:
+	var pants_script = load("res://scripts/cloth_pants_item.gd")
+	if pants_script:
+		var pants_instance = pants_script.new()
+		if pants_instance and pants_instance.has_method("get_shared_texture"):
+			return pants_instance.get_shared_texture()
 	return null
 
 func _exit_tree():
