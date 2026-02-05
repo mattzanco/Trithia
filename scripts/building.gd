@@ -13,8 +13,10 @@ var player: Node = null
 var building_rect := Rect2i()
 var door_tile := Vector2i.ZERO
 var is_player_inside = false
+var door_open = false
 var base_layer: Node2D = null
 var roof_layer: Node2D = null
+const DOOR_INTERACT_DISTANCE = 48.0
 
 func _ready():
 	world = get_world_node()
@@ -44,6 +46,24 @@ func _process(_delta):
 	if next_inside != is_player_inside:
 		is_player_inside = next_inside
 		update_layers()
+
+func _unhandled_input(event):
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		if player == null:
+			player = get_player_node()
+		if player == null:
+			return
+		var click_position = get_global_mouse_position()
+		var click_tile = get_tile_coords(click_position)
+		if click_tile != door_tile:
+			return
+		if player.position.distance_to(click_position) > DOOR_INTERACT_DISTANCE:
+			return
+		if not door_open and is_player_on_door_tile(player):
+			return
+		door_open = not door_open
+		update_layers()
+		get_viewport().set_input_as_handled()
 
 func _exit_tree():
 	if world and world.has_method("remove_building"):
@@ -95,6 +115,7 @@ func update_layers():
 	base_layer.set("door_color", door_color)
 	base_layer.set("outline_color", outline_color)
 	base_layer.set("is_player_inside", is_player_inside)
+	base_layer.set("door_open", door_open)
 	roof_layer.set("size_tiles", size_tiles)
 	roof_layer.set("roof_color", roof_color)
 	roof_layer.set("is_player_inside", is_player_inside)
@@ -113,6 +134,15 @@ func get_tile_coords(world_position: Vector2) -> Vector2i:
 
 func is_tile_in_rect(tile: Vector2i, rect: Rect2i) -> bool:
 	return tile.x >= rect.position.x and tile.x < rect.position.x + rect.size.x and tile.y >= rect.position.y and tile.y < rect.position.y + rect.size.y
+
+func is_player_on_door_tile(player_node: Node) -> bool:
+	if player_node == null:
+		return false
+	var player_feet = player_node.position + Vector2(0, TILE_SIZE / 2)
+	return get_tile_coords(player_feet) == door_tile
+
+func is_door_open() -> bool:
+	return door_open
 
 func get_world_node() -> Node:
 	var parent = get_parent()

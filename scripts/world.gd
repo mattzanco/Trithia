@@ -325,11 +325,15 @@ func is_walkable_for_player(world_position: Vector2, from_position: Vector2 = Ve
 		var inside_entry = get_building_entry_for_node(player_inside_building)
 		if inside_entry.is_empty():
 			return true
-		return from_tile == inside_entry["door"]
-	if tile == building["door"]:
-		return true
+		if from_tile == inside_entry["door"]:
+			return is_building_door_open(inside_entry)
+		return false
 	if player_inside_building != null and building["building"] == player_inside_building:
+		if tile == building["door"]:
+			return true
 		return is_tile_in_building_interior(tile, building["rect"])
+	if tile == building["door"]:
+		return is_building_door_open(building)
 	if player_inside_building == null and is_tile_on_building_roof_edge(tile, building["rect"]):
 		return true
 	return false
@@ -362,6 +366,18 @@ func get_building_entry_for_node(building_node: Node) -> Dictionary:
 		if building["building"] == building_node:
 			return building
 	return {}
+
+func is_building_door_open(building_entry: Dictionary) -> bool:
+	if building_entry.is_empty():
+		return false
+	var building_node = building_entry.get("building", null)
+	if building_node == null:
+		return false
+	if building_node.has_method("is_door_open"):
+		return building_node.is_door_open()
+	if building_node.has_method("get"):
+		return bool(building_node.get("door_open"))
+	return false
 
 func is_tile_blocked_by_building(tile: Vector2i) -> bool:
 	return not get_building_for_tile(tile).is_empty()
