@@ -15,6 +15,10 @@ func _ready():
 	# Initialize 8-slot container
 	for i in range(8):
 		container_items.append(null)
+	if has_meta("is_orc_body") and randf() < 0.25:
+		add_item_to_first_empty("shield")
+	if (has_meta("is_orc_body") or has_meta("is_troll_body")) and randf() < 0.5:
+		add_item_to_first_empty("meat")
 	# Dead bodies don't need to be draggable
 	requires_adjacent = true
 	set_process(true)
@@ -148,7 +152,12 @@ func create_container_window():
 	vbox.add_child(title_bar)
 	
 	var title = Label.new()
-	title.text = "Dead Orc"
+	if has_meta("is_player_body"):
+		title.text = "Dead Player"
+	elif has_meta("is_troll_body"):
+		title.text = "Dead Troll"
+	else:
+		title.text = "Dead Orc"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.modulate = Color(0.9, 0.85, 0.75, 1)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -180,6 +189,10 @@ func create_container_window():
 		slot.add_theme_stylebox_override("panel", slot_style)
 		grid.add_child(slot)
 		container_slots.append(slot)
+
+	# Populate any pre-existing items now that slots exist
+	for i in range(container_items.size()):
+		update_container_slot_visual(i)
 	
 	var ui_parent: Node = equip_menu
 	if equip_menu.get_parent() is CanvasLayer:
@@ -311,6 +324,28 @@ func update_container_slot_visual(slot_index: int):
 		icon.anchor_top = 0
 		icon.anchor_right = 1
 		icon.anchor_bottom = 1
+	elif item_type == "shield":
+		var icon = TextureRect.new()
+		icon.texture = get_shield_texture()
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		icon.anchor_left = 0
+		icon.anchor_top = 0
+		icon.anchor_right = 1
+		icon.anchor_bottom = 1
+	elif item_type == "meat":
+		var icon = TextureRect.new()
+		icon.texture = get_meat_texture()
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		icon.anchor_left = 0
+		icon.anchor_top = 0
+		icon.anchor_right = 1
+		icon.anchor_bottom = 1
 
 func get_helmet_texture() -> Texture2D:
 	var helmet_script = load("res://scripts/helmet_item.gd")
@@ -352,15 +387,40 @@ func get_boots_texture() -> Texture2D:
 			return boots_instance.get_shared_texture()
 	return null
 
+func get_shield_texture() -> Texture2D:
+	var shield_script = load("res://scripts/wooden_shield_item.gd")
+	if shield_script:
+		var shield_instance = shield_script.new()
+		if shield_instance and shield_instance.has_method("get_shared_texture"):
+			return shield_instance.get_shared_texture()
+	return null
+
+func get_meat_texture() -> Texture2D:
+	var meat_script = load("res://scripts/meat_item.gd")
+	if meat_script:
+		var meat_instance = meat_script.new()
+		if meat_instance and meat_instance.has_method("get_shared_texture"):
+			return meat_instance.get_shared_texture()
+	return null
+
 func _exit_tree():
 	if container_window and is_instance_valid(container_window):
 		container_window.queue_free()
 		container_window = null
 
 func _draw():
-	# Draw a dead orc lying sideways (pale green) centered in tile
-	var dead_color = Color(0.6, 0.8, 0.6)  # Pale green
-	var outline_color = Color(0.3, 0.4, 0.3)  # Dark green outline
+	# Draw a dead body lying sideways centered in tile
+	var dead_color = Color(0.6, 0.8, 0.6)  # Pale green (orc)
+	var outline_color = Color(0.3, 0.4, 0.3)  # Dark green outline (orc)
+	if has_meta("is_player_body"):
+		if has_meta("body_skin_color"):
+			dead_color = get_meta("body_skin_color")
+		else:
+			dead_color = Color(0.95, 0.8, 0.6)
+		outline_color = Color(0.5, 0.35, 0.25)
+	elif has_meta("is_troll_body"):
+		dead_color = Color(0.55, 0.4, 0.25)
+		outline_color = Color(0.3, 0.2, 0.12)
 	var blood_color = Color(0.8, 0.1, 0.1, 0.6)
 	
 	# Head (lying on its side)

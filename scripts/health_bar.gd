@@ -43,8 +43,14 @@ func _draw():
 	if character:
 		var font = ThemeDB.fallback_font
 		var font_size = 11  # Medium font size
-		# Display "Orc" if the parent is an orc, otherwise use the character's name
-		var name_text = "Orc" if character.get_script().resource_path == "res://scripts/orc.gd" else character.name
+		# Display enemy name when attached to an enemy
+		var name_text = character.name
+		if character.is_in_group("enemies"):
+			var script = character.get_script()
+			if script and script.resource_path == "res://scripts/troll.gd":
+				name_text = "Troll"
+			else:
+				name_text = "Orc"
 		var name_y = NAME_OFFSET_Y
 		
 		# Calculate text width to center it

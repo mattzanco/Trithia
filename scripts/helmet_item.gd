@@ -37,16 +37,16 @@ static func get_helmet_texture() -> Texture2D:
 		var cloth = Color(0.65, 0.6, 0.5)
 		var dark = Color(0.5, 0.45, 0.38)
 		var highlight = Color(0.75, 0.7, 0.6)
-		# Cap top
-		for y in range(6, 14):
+		# Cap top (shifted down to visually center in 32x32 tile)
+		for y in range(10, 18):
 			for x in range(8, 24):
 				img.set_pixel(x, y, cloth)
 		# Brim
-		for y in range(14, 16):
+		for y in range(18, 20):
 			for x in range(6, 26):
 				img.set_pixel(x, y, dark)
 		# Highlight
-		for y in range(7, 10):
+		for y in range(11, 14):
 			for x in range(12, 16):
 				img.set_pixel(x, y, highlight)
 		_helmet_texture = ImageTexture.create_from_image(img)

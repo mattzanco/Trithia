@@ -1,6 +1,9 @@
 extends Control
 
 const TILE_SIZE = 32
+const CLUB_ATTACK = 1
+const ARMOR_DEFENSE = 1
+const SHIELD_DEFENSE = 2
 
 @export var helmet_color := Color(0.7, 0.7, 0.75)
 @export var bag_color := Color(0.6, 0.4, 0.2)
@@ -17,9 +20,11 @@ var legs_slot: Control
 var boots_slot: Control
 var helmet_icon: TextureRect
 var club_icon: TextureRect
+var shield_icon: TextureRect
 var armor_icon: TextureRect
 var pants_icon: TextureRect
 var boots_icon: TextureRect
+var meat_icon: TextureRect
 var bag_icon: TextureRect
 var ghost_icon: TextureRect
 var ghost_layer: CanvasLayer
@@ -29,17 +34,36 @@ var bag_items: Array = []  # Track items in each bag slot
 
 var is_dragging = false
 var is_dragging_club = false
+var is_dragging_shield = false
 var is_dragging_armor = false
 var is_dragging_pants = false
 var is_dragging_boots = false
+var is_dragging_meat = false
 var is_dragging_bag_icon = false
+var helmet_drag_from_inventory = false
+var club_drag_from_inventory = false
+var shield_drag_from_inventory = false
+var armor_drag_from_inventory = false
+var pants_drag_from_inventory = false
+var boots_drag_from_inventory = false
+var helmet_equipped_before = false
+var club_equipped_before := ""
+var shield_equipped_before = false
+var armor_equipped_before = false
+var pants_equipped_before = false
+var boots_equipped_before = false
 var drag_offset = Vector2.ZERO
 var club_drag_offset = Vector2.ZERO
+var shield_drag_offset = Vector2.ZERO
 var armor_drag_offset = Vector2.ZERO
 var pants_drag_offset = Vector2.ZERO
 var boots_drag_offset = Vector2.ZERO
+var meat_drag_offset = Vector2.ZERO
+var meat_drag_origin_slot := -1
+var meat_drag_origin_body: Node = null
 var helmet_world_item = null
 var club_world_item = null
+var shield_world_item = null
 var armor_world_item = null
 var pants_world_item = null
 var boots_world_item = null
@@ -58,9 +82,11 @@ var bag_title: Label
 var bag_title_bar: HBoxContainer
 var bag_grid: GridContainer
 var club_equipped_slot: String = ""
+var shield_equipped = false
 var armor_equipped = false
 var pants_equipped = false
 var boots_equipped = false
+var helmet_equipped = false
 
 @export var start_with_club = true
 @export var start_with_armor = true
@@ -69,6 +95,8 @@ var boots_equipped = false
 
 func _ready():
 	player = get_player_node()
+	if player and is_instance_valid(player):
+		helmet_equipped = player.has_helmet
 	head_slot = $Panel/Margin/Center/VBox/SlotGrid/HeadSlot
 	backpack_slot = $Panel/Margin/Center/VBox/SlotGrid/BackpackSlot
 	weapon_slot = $Panel/Margin/Center/VBox/SlotGrid/WeaponSlot
@@ -81,9 +109,11 @@ func _ready():
 	head_slot_highlight = create_highlight_style()
 	ensure_helmet_icon()
 	ensure_club_icon()
+	ensure_shield_icon()
 	ensure_armor_icon()
 	ensure_pants_icon()
 	ensure_boots_icon()
+	ensure_meat_icon()
 	ensure_bag_icon()
 	ensure_ghost_icon()
 	create_bag_container()
@@ -91,6 +121,7 @@ func _ready():
 	set_process(true)
 	update_helmet_visual()
 	update_club_visual()
+	update_shield_visual()
 	update_armor_visual()
 	update_pants_visual()
 	update_boots_visual()
@@ -155,6 +186,8 @@ func _process(_delta):
 		update_helmet_visual()
 	if not is_dragging_club:
 		update_club_visual()
+	if not is_dragging_shield:
+		update_shield_visual()
 	if not is_dragging_armor:
 		update_armor_visual()
 	if not is_dragging_pants:
@@ -194,8 +227,12 @@ func _input(event):
 					DRAGGABLE_SCRIPT.show_center_text(get_helmet_description(), self)
 					get_viewport().set_input_as_handled()
 					return
-				elif (is_mouse_on_club_icon() or is_mouse_on_weapon_slot() or is_mouse_on_shield_slot()) and is_club_equipped():
+				elif (is_mouse_on_club_icon() or is_mouse_on_weapon_slot()) and is_club_equipped():
 					DRAGGABLE_SCRIPT.show_center_text(get_club_description(), self)
+					get_viewport().set_input_as_handled()
+					return
+				elif (is_mouse_on_shield_icon() or is_mouse_on_shield_slot()) and is_shield_equipped():
+					DRAGGABLE_SCRIPT.show_center_text(get_shield_description(), self)
 					get_viewport().set_input_as_handled()
 					return
 				elif (is_mouse_on_armor_icon() or is_mouse_on_armor_slot()) and is_armor_equipped():
@@ -215,6 +252,37 @@ func _input(event):
 					get_viewport().set_input_as_handled()
 					return
 				else:
+					var body_item = get_body_container_item_at_mouse()
+					if not body_item.is_empty():
+						var item_type = body_item.get("item", "")
+						if item_type == "helmet":
+							DRAGGABLE_SCRIPT.show_center_text(get_helmet_description(), self)
+							get_viewport().set_input_as_handled()
+							return
+						elif item_type == "club":
+							DRAGGABLE_SCRIPT.show_center_text(get_club_description(), self)
+							get_viewport().set_input_as_handled()
+							return
+						elif item_type == "shield":
+							DRAGGABLE_SCRIPT.show_center_text(get_shield_description(), self)
+							get_viewport().set_input_as_handled()
+							return
+						elif item_type == "armor":
+							DRAGGABLE_SCRIPT.show_center_text(get_armor_description(), self)
+							get_viewport().set_input_as_handled()
+							return
+						elif item_type == "pants":
+							DRAGGABLE_SCRIPT.show_center_text(get_pants_description(), self)
+							get_viewport().set_input_as_handled()
+							return
+						elif item_type == "boots":
+							DRAGGABLE_SCRIPT.show_center_text(get_boots_description(), self)
+							get_viewport().set_input_as_handled()
+							return
+						elif item_type == "meat":
+							DRAGGABLE_SCRIPT.show_center_text(get_meat_description(), self)
+							get_viewport().set_input_as_handled()
+							return
 					var bag_slot_index = get_bag_slot_at_mouse()
 					if bag_slot_index >= 0 and bag_items[bag_slot_index] == "helmet":
 						DRAGGABLE_SCRIPT.show_center_text(get_helmet_description(), self)
@@ -222,6 +290,10 @@ func _input(event):
 						return
 					elif bag_slot_index >= 0 and bag_items[bag_slot_index] == "club":
 						DRAGGABLE_SCRIPT.show_center_text(get_club_description(), self)
+						get_viewport().set_input_as_handled()
+						return
+					elif bag_slot_index >= 0 and bag_items[bag_slot_index] == "shield":
+						DRAGGABLE_SCRIPT.show_center_text(get_shield_description(), self)
 						get_viewport().set_input_as_handled()
 						return
 					elif bag_slot_index >= 0 and bag_items[bag_slot_index] == "armor":
@@ -234,6 +306,10 @@ func _input(event):
 						return
 					elif bag_slot_index >= 0 and bag_items[bag_slot_index] == "boots":
 						DRAGGABLE_SCRIPT.show_center_text(get_boots_description(), self)
+						get_viewport().set_input_as_handled()
+						return
+					elif bag_slot_index >= 0 and bag_items[bag_slot_index] == "meat":
+						DRAGGABLE_SCRIPT.show_center_text(get_meat_description(), self)
 						get_viewport().set_input_as_handled()
 						return
 			# Check for dead body window resize handle
@@ -265,9 +341,14 @@ func _input(event):
 					start_drag(event.global_position)
 					get_viewport().set_input_as_handled()
 			# Check for club icon dragging
-			elif is_mouse_on_club_icon() or is_mouse_on_weapon_slot() or is_mouse_on_shield_slot():
+			elif is_mouse_on_club_icon() or is_mouse_on_weapon_slot():
 				if is_club_equipped():
 					start_club_drag(event.global_position)
+					get_viewport().set_input_as_handled()
+			# Check for shield icon dragging
+			elif is_mouse_on_shield_icon() or is_mouse_on_shield_slot():
+				if is_shield_equipped():
+					start_shield_drag(event.global_position)
 					get_viewport().set_input_as_handled()
 			# Check for armor icon dragging
 			elif is_mouse_on_armor_icon() or is_mouse_on_armor_slot():
@@ -315,6 +396,9 @@ func _input(event):
 			elif is_dragging_club:
 				finish_club_drag(event.global_position)
 				get_viewport().set_input_as_handled()
+			elif is_dragging_shield:
+				finish_shield_drag(event.global_position)
+				get_viewport().set_input_as_handled()
 			elif is_dragging_armor:
 				finish_armor_drag(event.global_position)
 				get_viewport().set_input_as_handled()
@@ -324,6 +408,9 @@ func _input(event):
 			elif is_dragging_boots:
 				finish_boots_drag(event.global_position)
 				get_viewport().set_input_as_handled()
+			elif is_dragging_meat:
+				finish_meat_drag(event.global_position)
+				get_viewport().set_input_as_handled()
 			elif is_dragging_bag_icon:
 				finish_bag_icon_drag(event.global_position)
 				get_viewport().set_input_as_handled()
@@ -331,6 +418,26 @@ func _input(event):
 				finish_drag(event.global_position)
 				get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		var body_item = get_body_container_item_at_mouse()
+		if not body_item.is_empty() and body_item.get("item", "") == "meat":
+			if player == null:
+				player = get_player_node()
+			if player and player.has_method("consume_meat") and player.consume_meat():
+				var body_ref = body_item.get("body", null)
+				var slot_index = body_item.get("index", -1)
+				if body_ref and body_ref.has_method("remove_item_from_slot"):
+					body_ref.remove_item_from_slot(slot_index)
+				get_viewport().set_input_as_handled()
+				return
+		var bag_slot_index = get_bag_slot_at_mouse()
+		if bag_slot_index >= 0 and bag_items[bag_slot_index] == "meat":
+			if player == null:
+				player = get_player_node()
+			if player and player.has_method("consume_meat") and player.consume_meat():
+				bag_items[bag_slot_index] = null
+				update_bag_slot_visual(bag_slot_index)
+				get_viewport().set_input_as_handled()
+				return
 		if is_mouse_on_bag_icon() or is_mouse_on_backpack_slot():
 			if not is_dragging_bag_icon:
 				toggle_bag_container()
@@ -366,6 +473,9 @@ func _input(event):
 		elif is_dragging_club:
 			move_club_icon(event.global_position)
 			get_viewport().set_input_as_handled()
+		elif is_dragging_shield:
+			move_shield_icon(event.global_position)
+			get_viewport().set_input_as_handled()
 		elif is_dragging_armor:
 			move_armor_icon(event.global_position)
 			get_viewport().set_input_as_handled()
@@ -374,6 +484,9 @@ func _input(event):
 			get_viewport().set_input_as_handled()
 		elif is_dragging_boots:
 			move_boots_icon(event.global_position)
+			get_viewport().set_input_as_handled()
+		elif is_dragging_meat:
+			move_meat_icon(event.global_position)
 			get_viewport().set_input_as_handled()
 		elif is_dragging_bag_icon:
 			bag_icon.global_position = event.global_position + drag_offset
@@ -395,6 +508,14 @@ func add_helmet_to_bag() -> bool:
 	for i in range(bag_items.size()):
 		if bag_items[i] == null:
 			bag_items[i] = "helmet"
+			update_bag_slot_visual(i)
+			return true
+	return false
+
+func add_item_to_bag_first_empty(item_type: String) -> bool:
+	for i in range(bag_items.size()):
+		if bag_items[i] == null:
+			bag_items[i] = item_type
 			update_bag_slot_visual(i)
 			return true
 	return false
@@ -423,6 +544,17 @@ func update_bag_slot_visual(slot_index: int):
 	elif slot_index < bag_items.size() and bag_items[slot_index] == "club":
 		var icon = TextureRect.new()
 		icon.texture = create_club_texture()
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		icon.anchor_left = 0
+		icon.anchor_top = 0
+		icon.anchor_right = 1
+		icon.anchor_bottom = 1
+	elif slot_index < bag_items.size() and bag_items[slot_index] == "shield":
+		var icon = TextureRect.new()
+		icon.texture = create_shield_texture()
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -464,6 +596,17 @@ func update_bag_slot_visual(slot_index: int):
 		icon.anchor_top = 0
 		icon.anchor_right = 1
 		icon.anchor_bottom = 1
+	elif slot_index < bag_items.size() and bag_items[slot_index] == "meat":
+		var icon = TextureRect.new()
+		icon.texture = create_meat_texture()
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		icon.anchor_left = 0
+		icon.anchor_top = 0
+		icon.anchor_right = 1
+		icon.anchor_bottom = 1
 
 func ensure_helmet_icon():
 	if helmet_icon != null:
@@ -484,6 +627,16 @@ func ensure_club_icon():
 	club_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	club_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(club_icon)
+
+func ensure_shield_icon():
+	if shield_icon != null:
+		return
+	shield_icon = TextureRect.new()
+	shield_icon.texture = create_shield_texture()
+	shield_icon.size = Vector2(32, 32)
+	shield_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shield_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(shield_icon)
 
 func ensure_armor_icon():
 	if armor_icon != null:
@@ -515,6 +668,17 @@ func ensure_boots_icon():
 	boots_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(boots_icon)
 
+func ensure_meat_icon():
+	if meat_icon != null:
+		return
+	meat_icon = TextureRect.new()
+	meat_icon.texture = create_meat_texture()
+	meat_icon.size = Vector2(32, 32)
+	meat_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	meat_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	meat_icon.visible = false
+	add_child(meat_icon)
+
 func ensure_ghost_icon():
 	if ghost_icon != null:
 		return
@@ -545,6 +709,14 @@ func create_club_texture() -> Texture2D:
 			return club_instance.get_shared_texture()
 	return null
 
+func create_shield_texture() -> Texture2D:
+	var shield_script = load("res://scripts/wooden_shield_item.gd")
+	if shield_script:
+		var shield_instance = shield_script.new()
+		if shield_instance and shield_instance.has_method("get_shared_texture"):
+			return shield_instance.get_shared_texture()
+	return null
+
 func create_armor_texture() -> Texture2D:
 	var armor_script = load("res://scripts/cloth_armor_item.gd")
 	if armor_script:
@@ -569,23 +741,37 @@ func create_boots_texture() -> Texture2D:
 			return boots_instance.get_shared_texture()
 	return null
 
+func create_meat_texture() -> Texture2D:
+	var meat_script = load("res://scripts/meat_item.gd")
+	if meat_script:
+		var meat_instance = meat_script.new()
+		if meat_instance and meat_instance.has_method("get_shared_texture"):
+			return meat_instance.get_shared_texture()
+	return null
+
 func get_helmet_description() -> String:
-	return "Cloth Hat\nSimple headwear."
+	return "Cloth Hat\nSimple headwear.\nATK: 0  DEF: 0"
 
 func get_backpack_description() -> String:
 	return "Backpack\nStores items."
 
 func get_club_description() -> String:
-	return "Club\nA simple wooden weapon."
+	return "Club\nA simple wooden weapon.\nATK: %d  DEF: 0" % CLUB_ATTACK
+
+func get_shield_description() -> String:
+	return "Wooden Shield\nSimple wooden protection.\nATK: 0  DEF: %d" % SHIELD_DEFENSE
 
 func get_armor_description() -> String:
-	return "Cloth Armor\nSimple protective cloth."
+	return "Cloth Armor\nSimple protective cloth.\nATK: 0  DEF: %d" % ARMOR_DEFENSE
 
 func get_pants_description() -> String:
-	return "Cloth Pants\nSimple cloth trousers."
+	return "Cloth Pants\nSimple cloth trousers.\nATK: 0  DEF: 0"
 
 func get_boots_description() -> String:
-	return "Cloth Boots\nSimple cloth footwear."
+	return "Cloth Boots\nSimple cloth footwear.\nATK: 0  DEF: 0"
+
+func get_meat_description() -> String:
+	return "Meat\nRestores health over time."
 
 func update_helmet_visual():
 	if helmet_icon == null:
@@ -604,6 +790,15 @@ func update_club_visual():
 		position_club_in_slot()
 	else:
 		club_icon.visible = false
+
+func update_shield_visual():
+	if shield_icon == null:
+		return
+	if is_shield_equipped():
+		shield_icon.visible = true
+		position_shield_in_slot()
+	else:
+		shield_icon.visible = false
 
 func update_armor_visual():
 	if armor_icon == null:
@@ -642,6 +837,11 @@ func position_club_in_slot():
 	var icon_pos = slot_rect.position + (slot_rect.size - club_icon.size) / 2.0
 	club_icon.global_position = icon_pos
 
+func position_shield_in_slot():
+	var slot_rect = get_shield_slot_rect()
+	var icon_pos = slot_rect.position + (slot_rect.size - shield_icon.size) / 2.0
+	shield_icon.global_position = icon_pos
+
 func position_armor_in_slot():
 	var slot_rect = get_armor_slot_rect()
 	var icon_pos = slot_rect.position + (slot_rect.size - armor_icon.size) / 2.0
@@ -668,6 +868,12 @@ func start_club_drag(mouse_pos: Vector2):
 		club_icon.z_index = 100
 	club_drag_offset = club_icon.global_position - mouse_pos
 
+func start_shield_drag(mouse_pos: Vector2):
+	is_dragging_shield = true
+	if shield_icon:
+		shield_icon.z_index = 100
+	shield_drag_offset = shield_icon.global_position - mouse_pos
+
 func start_armor_drag(mouse_pos: Vector2):
 	is_dragging_armor = true
 	if armor_icon:
@@ -689,6 +895,9 @@ func start_boots_drag(mouse_pos: Vector2):
 func move_club_icon(mouse_pos: Vector2):
 	club_icon.global_position = mouse_pos + club_drag_offset
 
+func move_shield_icon(mouse_pos: Vector2):
+	shield_icon.global_position = mouse_pos + shield_drag_offset
+
 func move_armor_icon(mouse_pos: Vector2):
 	armor_icon.global_position = mouse_pos + armor_drag_offset
 
@@ -698,6 +907,10 @@ func move_pants_icon(mouse_pos: Vector2):
 func move_boots_icon(mouse_pos: Vector2):
 	boots_icon.global_position = mouse_pos + boots_drag_offset
 
+func move_meat_icon(mouse_pos: Vector2):
+	if meat_icon:
+		meat_icon.global_position = mouse_pos + meat_drag_offset
+
 func move_icon(mouse_pos: Vector2):
 	helmet_icon.global_position = mouse_pos + drag_offset
 	update_drag_hover_state()
@@ -706,45 +919,95 @@ func finish_drag(mouse_pos: Vector2):
 	is_dragging = false
 	helmet_icon.z_index = 0
 	clear_slot_highlight()
+	var keep_equipped = helmet_drag_from_inventory and helmet_equipped_before
+	helmet_drag_from_inventory = false
+	helmet_equipped_before = false
 	
 	# Check if dropping on head slot
 	if is_point_in_rect(mouse_pos, get_head_slot_rect()):
 		set_helmet_equipped(true)
 		position_icon_in_slot()
 	else:
+		# Check if dropping on backpack slot
+		if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+			if add_item_to_bag_first_empty("helmet"):
+				if keep_equipped:
+					set_helmet_equipped(true)
+					position_icon_in_slot()
+				else:
+					set_helmet_equipped(false)
+				return
+			if keep_equipped:
+				set_helmet_equipped(true)
+				position_icon_in_slot()
+			else:
+				position_icon_in_slot()
+			return
 		# Check if dropping on dead body container slot
 		var body_target = get_body_container_slot_target()
 		if body_target:
-			set_helmet_equipped(false)
 			var body_ref = body_target["body"]
 			var slot_index = body_target["index"]
 			if body_ref and body_ref.has_method("add_item_to_slot"):
 				if body_ref.add_item_to_slot("helmet", slot_index):
+					if keep_equipped:
+						set_helmet_equipped(true)
+						position_icon_in_slot()
+					else:
+						set_helmet_equipped(false)
 					return
 		# Check if dropping on a bag slot
 		var bag_slot_index = get_bag_slot_at_mouse()
 		if bag_slot_index >= 0:
-			set_helmet_equipped(false)
 			if add_helmet_to_bag_slot(bag_slot_index):
+				if keep_equipped:
+					set_helmet_equipped(true)
+					position_icon_in_slot()
+				else:
+					set_helmet_equipped(false)
 				return  # Successfully added to bag
 		
 		# Otherwise drop to world
-		set_helmet_equipped(false)
+		if keep_equipped:
+			set_helmet_equipped(true)
+			position_icon_in_slot()
+		else:
+			set_helmet_equipped(false)
 		spawn_helmet_in_world_at(mouse_pos)
 
 func finish_club_drag(mouse_pos: Vector2):
 	is_dragging_club = false
 	if club_icon:
 		club_icon.z_index = 0
+	var keep_equipped = club_drag_from_inventory and club_equipped_before != ""
+	club_drag_from_inventory = false
+	var restore_slot = club_equipped_before
+	club_equipped_before = ""
 	# Check if dropping on weapon slot
 	if is_point_in_rect(mouse_pos, get_weapon_slot_rect()):
 		set_club_equipped("weapon")
 		position_club_in_slot()
 		return
 	# Check if dropping on shield slot
-	if is_point_in_rect(mouse_pos, get_shield_slot_rect()):
+	if is_point_in_rect(mouse_pos, get_shield_slot_rect()) and not is_shield_equipped():
 		set_club_equipped("shield")
 		position_club_in_slot()
+		return
+	# Check if dropping on backpack slot
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("club"):
+			if keep_equipped:
+				set_club_equipped(restore_slot)
+				position_club_in_slot()
+			else:
+				set_club_equipped("")
+				club_icon.visible = false
+			return
+		if keep_equipped:
+			set_club_equipped(restore_slot)
+			position_club_in_slot()
+		else:
+			position_club_in_slot()
 		return
 	# Check if dropping on dead body container slot
 	var body_target = get_body_container_slot_target()
@@ -753,28 +1016,120 @@ func finish_club_drag(mouse_pos: Vector2):
 		var slot_index = body_target["index"]
 		if body_ref and body_ref.has_method("add_item_to_slot"):
 			if body_ref.add_item_to_slot("club", slot_index):
-				set_club_equipped("")
-				club_icon.visible = false
+				if keep_equipped:
+					set_club_equipped(restore_slot)
+					position_club_in_slot()
+				else:
+					set_club_equipped("")
+					club_icon.visible = false
 				return
 	# Check if dropping on a bag slot
 	var bag_slot_index = get_bag_slot_at_mouse()
 	if bag_slot_index >= 0:
 		if add_item_to_bag_slot("club", bag_slot_index):
-			set_club_equipped("")
-			club_icon.visible = false
+			if keep_equipped:
+				set_club_equipped(restore_slot)
+				position_club_in_slot()
+			else:
+				set_club_equipped("")
+				club_icon.visible = false
 			return
 	# Otherwise drop to world
-	set_club_equipped("")
+	if keep_equipped:
+		set_club_equipped(restore_slot)
+		position_club_in_slot()
+	else:
+		set_club_equipped("")
 	spawn_club_in_world_at(mouse_pos)
+
+func finish_shield_drag(mouse_pos: Vector2):
+	is_dragging_shield = false
+	if shield_icon:
+		shield_icon.z_index = 0
+	var keep_equipped = shield_drag_from_inventory and shield_equipped_before
+	shield_drag_from_inventory = false
+	shield_equipped_before = false
+	# Check if dropping on shield slot
+	if is_point_in_rect(mouse_pos, get_shield_slot_rect()):
+		set_shield_equipped(true)
+		position_shield_in_slot()
+		return
+	# Check if dropping on backpack slot
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("shield"):
+			if keep_equipped:
+				set_shield_equipped(true)
+				position_shield_in_slot()
+			else:
+				set_shield_equipped(false)
+				shield_icon.visible = false
+			return
+		if keep_equipped:
+			set_shield_equipped(true)
+			position_shield_in_slot()
+		else:
+			position_shield_in_slot()
+		return
+	# Check if dropping on dead body container slot
+	var body_target = get_body_container_slot_target()
+	if body_target:
+		var body_ref = body_target["body"]
+		var slot_index = body_target["index"]
+		if body_ref and body_ref.has_method("add_item_to_slot"):
+			if body_ref.add_item_to_slot("shield", slot_index):
+				if keep_equipped:
+					set_shield_equipped(true)
+					position_shield_in_slot()
+				else:
+					set_shield_equipped(false)
+					shield_icon.visible = false
+				return
+	# Check if dropping on a bag slot
+	var bag_slot_index = get_bag_slot_at_mouse()
+	if bag_slot_index >= 0:
+		if add_item_to_bag_slot("shield", bag_slot_index):
+			if keep_equipped:
+				set_shield_equipped(true)
+				position_shield_in_slot()
+			else:
+				set_shield_equipped(false)
+				shield_icon.visible = false
+			return
+	# Otherwise drop to world
+	if keep_equipped:
+		set_shield_equipped(true)
+		position_shield_in_slot()
+	else:
+		set_shield_equipped(false)
+	spawn_shield_in_world_at(mouse_pos)
 
 func finish_armor_drag(mouse_pos: Vector2):
 	is_dragging_armor = false
 	if armor_icon:
 		armor_icon.z_index = 0
+	var keep_equipped = armor_drag_from_inventory and armor_equipped_before
+	armor_drag_from_inventory = false
+	armor_equipped_before = false
 	# Check if dropping on armor slot
 	if is_point_in_rect(mouse_pos, get_armor_slot_rect()):
 		set_armor_equipped(true)
 		position_armor_in_slot()
+		return
+	# Check if dropping on backpack slot
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("armor"):
+			if keep_equipped:
+				set_armor_equipped(true)
+				position_armor_in_slot()
+			else:
+				set_armor_equipped(false)
+				armor_icon.visible = false
+			return
+		if keep_equipped:
+			set_armor_equipped(true)
+			position_armor_in_slot()
+		else:
+			position_armor_in_slot()
 		return
 	# Check if dropping on dead body container slot
 	var body_target = get_body_container_slot_target()
@@ -783,28 +1138,59 @@ func finish_armor_drag(mouse_pos: Vector2):
 		var slot_index = body_target["index"]
 		if body_ref and body_ref.has_method("add_item_to_slot"):
 			if body_ref.add_item_to_slot("armor", slot_index):
-				set_armor_equipped(false)
-				armor_icon.visible = false
+				if keep_equipped:
+					set_armor_equipped(true)
+					position_armor_in_slot()
+				else:
+					set_armor_equipped(false)
+					armor_icon.visible = false
 				return
 	# Check if dropping on a bag slot
 	var bag_slot_index = get_bag_slot_at_mouse()
 	if bag_slot_index >= 0:
 		if add_item_to_bag_slot("armor", bag_slot_index):
-			set_armor_equipped(false)
-			armor_icon.visible = false
+			if keep_equipped:
+				set_armor_equipped(true)
+				position_armor_in_slot()
+			else:
+				set_armor_equipped(false)
+				armor_icon.visible = false
 			return
 	# Otherwise drop to world
-	set_armor_equipped(false)
+	if keep_equipped:
+		set_armor_equipped(true)
+		position_armor_in_slot()
+	else:
+		set_armor_equipped(false)
 	spawn_armor_in_world_at(mouse_pos)
 
 func finish_pants_drag(mouse_pos: Vector2):
 	is_dragging_pants = false
 	if pants_icon:
 		pants_icon.z_index = 0
+	var keep_equipped = pants_drag_from_inventory and pants_equipped_before
+	pants_drag_from_inventory = false
+	pants_equipped_before = false
 	# Check if dropping on legs slot
 	if is_point_in_rect(mouse_pos, get_legs_slot_rect()):
 		set_pants_equipped(true)
 		position_pants_in_slot()
+		return
+	# Check if dropping on backpack slot
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("pants"):
+			if keep_equipped:
+				set_pants_equipped(true)
+				position_pants_in_slot()
+			else:
+				set_pants_equipped(false)
+				pants_icon.visible = false
+			return
+		if keep_equipped:
+			set_pants_equipped(true)
+			position_pants_in_slot()
+		else:
+			position_pants_in_slot()
 		return
 	# Check if dropping on dead body container slot
 	var body_target = get_body_container_slot_target()
@@ -813,28 +1199,59 @@ func finish_pants_drag(mouse_pos: Vector2):
 		var slot_index = body_target["index"]
 		if body_ref and body_ref.has_method("add_item_to_slot"):
 			if body_ref.add_item_to_slot("pants", slot_index):
-				set_pants_equipped(false)
-				pants_icon.visible = false
+				if keep_equipped:
+					set_pants_equipped(true)
+					position_pants_in_slot()
+				else:
+					set_pants_equipped(false)
+					pants_icon.visible = false
 				return
 	# Check if dropping on a bag slot
 	var bag_slot_index = get_bag_slot_at_mouse()
 	if bag_slot_index >= 0:
 		if add_item_to_bag_slot("pants", bag_slot_index):
-			set_pants_equipped(false)
-			pants_icon.visible = false
+			if keep_equipped:
+				set_pants_equipped(true)
+				position_pants_in_slot()
+			else:
+				set_pants_equipped(false)
+				pants_icon.visible = false
 			return
 	# Otherwise drop to world
-	set_pants_equipped(false)
+	if keep_equipped:
+		set_pants_equipped(true)
+		position_pants_in_slot()
+	else:
+		set_pants_equipped(false)
 	spawn_pants_in_world_at(mouse_pos)
 
 func finish_boots_drag(mouse_pos: Vector2):
 	is_dragging_boots = false
 	if boots_icon:
 		boots_icon.z_index = 0
+	var keep_equipped = boots_drag_from_inventory and boots_equipped_before
+	boots_drag_from_inventory = false
+	boots_equipped_before = false
 	# Check if dropping on boots slot
 	if is_point_in_rect(mouse_pos, get_boots_slot_rect()):
 		set_boots_equipped(true)
 		position_boots_in_slot()
+		return
+	# Check if dropping on backpack slot
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("boots"):
+			if keep_equipped:
+				set_boots_equipped(true)
+				position_boots_in_slot()
+			else:
+				set_boots_equipped(false)
+				boots_icon.visible = false
+			return
+		if keep_equipped:
+			set_boots_equipped(true)
+			position_boots_in_slot()
+		else:
+			position_boots_in_slot()
 		return
 	# Check if dropping on dead body container slot
 	var body_target = get_body_container_slot_target()
@@ -843,25 +1260,84 @@ func finish_boots_drag(mouse_pos: Vector2):
 		var slot_index = body_target["index"]
 		if body_ref and body_ref.has_method("add_item_to_slot"):
 			if body_ref.add_item_to_slot("boots", slot_index):
-				set_boots_equipped(false)
-				boots_icon.visible = false
+				if keep_equipped:
+					set_boots_equipped(true)
+					position_boots_in_slot()
+				else:
+					set_boots_equipped(false)
+					boots_icon.visible = false
 				return
 	# Check if dropping on a bag slot
 	var bag_slot_index = get_bag_slot_at_mouse()
 	if bag_slot_index >= 0:
 		if add_item_to_bag_slot("boots", bag_slot_index):
-			set_boots_equipped(false)
-			boots_icon.visible = false
+			if keep_equipped:
+				set_boots_equipped(true)
+				position_boots_in_slot()
+			else:
+				set_boots_equipped(false)
+				boots_icon.visible = false
 			return
 	# Otherwise drop to world
-	set_boots_equipped(false)
+	if keep_equipped:
+		set_boots_equipped(true)
+		position_boots_in_slot()
+	else:
+		set_boots_equipped(false)
 	spawn_boots_in_world_at(mouse_pos)
 
+func finish_meat_drag(mouse_pos: Vector2):
+	is_dragging_meat = false
+	if meat_icon:
+		meat_icon.z_index = 0
+		meat_icon.visible = false
+	# Check if dropping on backpack slot
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("meat"):
+			meat_drag_origin_slot = -1
+			meat_drag_origin_body = null
+			return
+		if meat_drag_origin_body and meat_drag_origin_body.has_method("add_item_to_slot"):
+			meat_drag_origin_body.add_item_to_slot("meat", meat_drag_origin_slot)
+			meat_drag_origin_slot = -1
+			meat_drag_origin_body = null
+			return
+		if meat_drag_origin_slot >= 0:
+			bag_items[meat_drag_origin_slot] = "meat"
+			update_bag_slot_visual(meat_drag_origin_slot)
+			meat_drag_origin_slot = -1
+			meat_drag_origin_body = null
+			return
+	# Check if dropping on dead body container slot
+	var body_target = get_body_container_slot_target()
+	if body_target:
+		var body_ref = body_target["body"]
+		var slot_index = body_target["index"]
+		if body_ref and body_ref.has_method("add_item_to_slot"):
+			if body_ref.add_item_to_slot("meat", slot_index):
+				meat_drag_origin_slot = -1
+				meat_drag_origin_body = null
+				return
+	# Check if dropping on a bag slot
+	var bag_slot_index = get_bag_slot_at_mouse()
+	if bag_slot_index >= 0:
+		if add_item_to_bag_slot("meat", bag_slot_index):
+			meat_drag_origin_slot = -1
+			meat_drag_origin_body = null
+			return
+	# Otherwise drop to world
+	meat_drag_origin_slot = -1
+	meat_drag_origin_body = null
+	spawn_meat_in_world_at(mouse_pos)
+
 func is_helmet_equipped() -> bool:
-	return player != null and player.has_helmet
+	return helmet_equipped
 
 func is_club_equipped() -> bool:
 	return club_equipped_slot != ""
+
+func is_shield_equipped() -> bool:
+	return shield_equipped
 
 func is_armor_equipped() -> bool:
 	return armor_equipped
@@ -873,6 +1349,7 @@ func is_boots_equipped() -> bool:
 	return boots_equipped
 
 func set_helmet_equipped(equipped: bool):
+	helmet_equipped = equipped
 	if player and player.has_method("set_helmet_equipped"):
 		player.set_helmet_equipped(equipped)
 	if equipped:
@@ -883,12 +1360,27 @@ func set_club_equipped(slot_name: String):
 	club_equipped_slot = slot_name
 	if slot_name != "":
 		remove_world_club()
+	if player and player.has_method("set_weapon_attack"):
+		player.set_weapon_attack(CLUB_ATTACK if slot_name != "" else 0)
 	update_club_visual()
+
+func set_shield_equipped(equipped: bool):
+	shield_equipped = equipped
+	if equipped:
+		remove_world_shield()
+		if club_equipped_slot == "shield":
+			club_equipped_slot = "weapon"
+			update_club_visual()
+	if player and player.has_method("set_shield_defense"):
+		player.set_shield_defense(SHIELD_DEFENSE if equipped else 0)
+	update_shield_visual()
 
 func set_armor_equipped(equipped: bool):
 	armor_equipped = equipped
 	if equipped:
 		remove_world_armor()
+	if player and player.has_method("set_armor_defense"):
+		player.set_armor_defense(ARMOR_DEFENSE if equipped else 0)
 	update_armor_visual()
 
 func set_pants_equipped(equipped: bool):
@@ -916,6 +1408,12 @@ func is_mouse_on_club_icon() -> bool:
 	if club_icon == null or not club_icon.visible:
 		return false
 	var rect = Rect2(club_icon.global_position, club_icon.size)
+	return rect.has_point(get_global_mouse_position())
+
+func is_mouse_on_shield_icon() -> bool:
+	if shield_icon == null or not shield_icon.visible:
+		return false
+	var rect = Rect2(shield_icon.global_position, shield_icon.size)
 	return rect.has_point(get_global_mouse_position())
 
 func is_mouse_on_armor_icon() -> bool:
@@ -1102,6 +1600,33 @@ func spawn_club_in_world_at(screen_pos: Vector2):
 			club_world_item = null
 	)
 
+func spawn_shield_in_world_at(screen_pos: Vector2):
+	if shield_world_item != null:
+		if is_instance_valid(shield_world_item) and not shield_world_item.is_queued_for_deletion():
+			var world_pos_existing = screen_to_world_position(get_viewport().get_mouse_position())
+			shield_world_item.position = snap_to_tile_center(world_pos_existing)
+			return
+		shield_world_item = null
+	if player == null:
+		player = get_player_node()
+	if player == null:
+		return
+	var world = get_world_node()
+	if world == null:
+		return
+	var shield_item = Area2D.new()
+	shield_item_setup(shield_item)
+	var world_pos = screen_to_world_position(get_viewport().get_mouse_position())
+	var snapped = snap_to_tile_center(world_pos)
+	shield_item.position = snapped
+	shield_item.z_index = 0
+	world.add_child(shield_item)
+	shield_world_item = shield_item
+	shield_item.tree_exited.connect(func():
+		if shield_world_item == shield_item:
+			shield_world_item = null
+	)
+
 func spawn_armor_in_world_at(screen_pos: Vector2):
 	if armor_world_item != null:
 		if is_instance_valid(armor_world_item) and not armor_world_item.is_queued_for_deletion():
@@ -1183,6 +1708,22 @@ func spawn_boots_in_world_at(screen_pos: Vector2):
 			boots_world_item = null
 	)
 
+func spawn_meat_in_world_at(screen_pos: Vector2):
+	if player == null:
+		player = get_player_node()
+	if player == null:
+		return
+	var world = get_world_node()
+	if world == null:
+		return
+	var meat_item = Area2D.new()
+	meat_item_setup(meat_item)
+	var world_pos = screen_to_world_position(screen_pos)
+	var snapped = snap_to_tile_center(world_pos)
+	meat_item.position = snapped
+	meat_item.z_index = 0
+	world.add_child(meat_item)
+
 func snap_to_tile_center(world_position: Vector2) -> Vector2:
 	var tile_x = round(world_position.x / TILE_SIZE)
 	var tile_y = round(world_position.y / TILE_SIZE)
@@ -1210,6 +1751,10 @@ func club_item_setup(club_item: Area2D):
 	var club_script = load("res://scripts/club_item.gd")
 	club_item.set_script(club_script)
 
+func shield_item_setup(shield_item: Area2D):
+	var shield_script = load("res://scripts/wooden_shield_item.gd")
+	shield_item.set_script(shield_script)
+
 func armor_item_setup(armor_item: Area2D):
 	var armor_script = load("res://scripts/cloth_armor_item.gd")
 	armor_item.set_script(armor_script)
@@ -1222,6 +1767,10 @@ func boots_item_setup(boots_item: Area2D):
 	var boots_script = load("res://scripts/cloth_boots_item.gd")
 	boots_item.set_script(boots_script)
 
+func meat_item_setup(meat_item: Area2D):
+	var meat_script = load("res://scripts/meat_item.gd")
+	meat_item.set_script(meat_script)
+
 func remove_world_helmet():
 	if helmet_world_item != null:
 		helmet_world_item.queue_free()
@@ -1231,6 +1780,11 @@ func remove_world_club():
 	if club_world_item != null:
 		club_world_item.queue_free()
 		club_world_item = null
+
+func remove_world_shield():
+	if shield_world_item != null:
+		shield_world_item.queue_free()
+		shield_world_item = null
 
 func remove_world_armor():
 	if armor_world_item != null:
@@ -1249,6 +1803,13 @@ func remove_world_boots():
 
 func try_equip_helmet_from_world(item: Node) -> bool:
 	var mouse_pos = get_global_mouse_position()
+	# Check if dropping on backpack slot
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("helmet"):
+			if item:
+				item.queue_free()
+			return true
+		return false
 	
 	# Check if dropping on dead body container slot
 	var body_target = get_body_container_slot_target()
@@ -1288,11 +1849,18 @@ func try_equip_club_from_world(item: Node) -> bool:
 			item.queue_free()
 		return true
 	# Check if dropping on shield slot
-	if is_point_in_rect(mouse_pos, get_shield_slot_rect()):
+	if is_point_in_rect(mouse_pos, get_shield_slot_rect()) and not is_shield_equipped():
 		set_club_equipped("shield")
 		if item:
 			item.queue_free()
 		return true
+	# Check if dropping on backpack slot
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("club"):
+			if item:
+				item.queue_free()
+			return true
+		return false
 	# Check if dropping on bag slot
 	var bag_slot_index = get_bag_slot_at_mouse()
 	if bag_slot_index >= 0:
@@ -1314,6 +1882,42 @@ func try_equip_club_from_world(item: Node) -> bool:
 		return false
 	return false
 
+func try_equip_shield_from_world(item: Node) -> bool:
+	var mouse_pos = get_global_mouse_position()
+	# Check if dropping on shield slot
+	if is_point_in_rect(mouse_pos, get_shield_slot_rect()):
+		set_shield_equipped(true)
+		if item:
+			item.queue_free()
+		return true
+	# Check if dropping on backpack slot
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("shield"):
+			if item:
+				item.queue_free()
+			return true
+		return false
+	# Check if dropping on bag slot
+	var bag_slot_index = get_bag_slot_at_mouse()
+	if bag_slot_index >= 0:
+		if add_item_to_bag_slot("shield", bag_slot_index):
+			if item:
+				item.queue_free()
+			return true
+		return false
+	# Check if dropping on dead body container slot
+	var body_target = get_body_container_slot_target()
+	if body_target:
+		var body_ref = body_target["body"]
+		var slot_index = body_target["index"]
+		if body_ref and body_ref.has_method("add_item_to_slot"):
+			if body_ref.add_item_to_slot("shield", slot_index):
+				if item:
+					item.queue_free()
+				return true
+		return false
+	return false
+
 func try_equip_armor_from_world(item: Node) -> bool:
 	var mouse_pos = get_global_mouse_position()
 	# Check if dropping on armor slot
@@ -1322,6 +1926,13 @@ func try_equip_armor_from_world(item: Node) -> bool:
 		if item:
 			item.queue_free()
 		return true
+	# Check if dropping on backpack slot
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("armor"):
+			if item:
+				item.queue_free()
+			return true
+		return false
 	# Check if dropping on bag slot
 	var bag_slot_index = get_bag_slot_at_mouse()
 	if bag_slot_index >= 0:
@@ -1351,6 +1962,13 @@ func try_equip_pants_from_world(item: Node) -> bool:
 		if item:
 			item.queue_free()
 		return true
+	# Check if dropping on backpack slot
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("pants"):
+			if item:
+				item.queue_free()
+			return true
+		return false
 	# Check if dropping on bag slot
 	var bag_slot_index = get_bag_slot_at_mouse()
 	if bag_slot_index >= 0:
@@ -1380,6 +1998,13 @@ func try_equip_boots_from_world(item: Node) -> bool:
 		if item:
 			item.queue_free()
 		return true
+	# Check if dropping on backpack slot
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("boots"):
+			if item:
+				item.queue_free()
+			return true
+		return false
 	# Check if dropping on bag slot
 	var bag_slot_index = get_bag_slot_at_mouse()
 	if bag_slot_index >= 0:
@@ -1395,6 +2020,36 @@ func try_equip_boots_from_world(item: Node) -> bool:
 		var slot_index = body_target["index"]
 		if body_ref and body_ref.has_method("add_item_to_slot"):
 			if body_ref.add_item_to_slot("boots", slot_index):
+				if item:
+					item.queue_free()
+				return true
+		return false
+	return false
+
+func try_store_meat_from_world(item: Node) -> bool:
+	# Check if dropping on backpack slot
+	var mouse_pos = get_global_mouse_position()
+	if is_point_in_rect(mouse_pos, get_backpack_slot_rect()):
+		if add_item_to_bag_first_empty("meat"):
+			if item:
+				item.queue_free()
+			return true
+		return false
+	# Check if dropping on bag slot
+	var bag_slot_index = get_bag_slot_at_mouse()
+	if bag_slot_index >= 0:
+		if add_item_to_bag_slot("meat", bag_slot_index):
+			if item:
+				item.queue_free()
+			return true
+		return false
+	# Check if dropping on dead body container slot
+	var body_target = get_body_container_slot_target()
+	if body_target:
+		var body_ref = body_target["body"]
+		var slot_index = body_target["index"]
+		if body_ref and body_ref.has_method("add_item_to_slot"):
+			if body_ref.add_item_to_slot("meat", slot_index):
 				if item:
 					item.queue_free()
 				return true
@@ -1768,7 +2423,10 @@ func start_body_item_drag(body_item: Dictionary, mouse_pos: Vector2):
 			var removed = body_ref.remove_item_from_slot(slot_index)
 			if removed == "":
 				return
-		set_helmet_equipped(true)
+		helmet_drag_from_inventory = true
+		helmet_equipped_before = is_helmet_equipped()
+		if not helmet_equipped_before:
+			set_helmet_equipped(true)
 		if body_ref.has_method("get_slot_rect"):
 			var slot_rect = body_ref.get_slot_rect(slot_index)
 			helmet_icon.global_position = slot_rect.position + (slot_rect.size - helmet_icon.size) / 2.0
@@ -1780,19 +2438,40 @@ func start_body_item_drag(body_item: Dictionary, mouse_pos: Vector2):
 			var removed = body_ref.remove_item_from_slot(slot_index)
 			if removed == "":
 				return
-		set_club_equipped("weapon")
+		club_drag_from_inventory = true
+		club_equipped_before = club_equipped_slot
+		if club_equipped_before == "":
+			set_club_equipped("weapon")
 		if body_ref.has_method("get_slot_rect"):
 			var slot_rect = body_ref.get_slot_rect(slot_index)
 			club_icon.global_position = slot_rect.position + (slot_rect.size - club_icon.size) / 2.0
 		club_icon.z_index = 100
 		is_dragging_club = true
 		club_drag_offset = club_icon.global_position - mouse_pos
+	elif item_type == "shield":
+		if body_ref.has_method("remove_item_from_slot"):
+			var removed = body_ref.remove_item_from_slot(slot_index)
+			if removed == "":
+				return
+		shield_drag_from_inventory = true
+		shield_equipped_before = is_shield_equipped()
+		if not shield_equipped_before:
+			set_shield_equipped(true)
+		if body_ref.has_method("get_slot_rect"):
+			var slot_rect = body_ref.get_slot_rect(slot_index)
+			shield_icon.global_position = slot_rect.position + (slot_rect.size - shield_icon.size) / 2.0
+		shield_icon.z_index = 100
+		is_dragging_shield = true
+		shield_drag_offset = shield_icon.global_position - mouse_pos
 	elif item_type == "armor":
 		if body_ref.has_method("remove_item_from_slot"):
 			var removed = body_ref.remove_item_from_slot(slot_index)
 			if removed == "":
 				return
-		set_armor_equipped(true)
+		armor_drag_from_inventory = true
+		armor_equipped_before = is_armor_equipped()
+		if not armor_equipped_before:
+			set_armor_equipped(true)
 		if body_ref.has_method("get_slot_rect"):
 			var slot_rect = body_ref.get_slot_rect(slot_index)
 			armor_icon.global_position = slot_rect.position + (slot_rect.size - armor_icon.size) / 2.0
@@ -1804,7 +2483,10 @@ func start_body_item_drag(body_item: Dictionary, mouse_pos: Vector2):
 			var removed = body_ref.remove_item_from_slot(slot_index)
 			if removed == "":
 				return
-		set_pants_equipped(true)
+		pants_drag_from_inventory = true
+		pants_equipped_before = is_pants_equipped()
+		if not pants_equipped_before:
+			set_pants_equipped(true)
 		if body_ref.has_method("get_slot_rect"):
 			var slot_rect = body_ref.get_slot_rect(slot_index)
 			pants_icon.global_position = slot_rect.position + (slot_rect.size - pants_icon.size) / 2.0
@@ -1816,13 +2498,31 @@ func start_body_item_drag(body_item: Dictionary, mouse_pos: Vector2):
 			var removed = body_ref.remove_item_from_slot(slot_index)
 			if removed == "":
 				return
-		set_boots_equipped(true)
+		boots_drag_from_inventory = true
+		boots_equipped_before = is_boots_equipped()
+		if not boots_equipped_before:
+			set_boots_equipped(true)
 		if body_ref.has_method("get_slot_rect"):
 			var slot_rect = body_ref.get_slot_rect(slot_index)
 			boots_icon.global_position = slot_rect.position + (slot_rect.size - boots_icon.size) / 2.0
 		boots_icon.z_index = 100
 		is_dragging_boots = true
 		boots_drag_offset = boots_icon.global_position - mouse_pos
+	elif item_type == "meat":
+		if body_ref.has_method("remove_item_from_slot"):
+			var removed = body_ref.remove_item_from_slot(slot_index)
+			if removed == "":
+				return
+		meat_drag_origin_body = body_ref
+		meat_drag_origin_slot = slot_index
+		ensure_meat_icon()
+		if body_ref.has_method("get_slot_rect"):
+			var slot_rect = body_ref.get_slot_rect(slot_index)
+			meat_icon.global_position = slot_rect.position + (slot_rect.size - meat_icon.size) / 2.0
+		meat_icon.visible = true
+		meat_icon.z_index = 100
+		is_dragging_meat = true
+		meat_drag_offset = meat_icon.global_position - mouse_pos
 
 func get_bag_slot_at_mouse() -> int:
 	var mouse_pos = get_global_mouse_position()
@@ -1861,32 +2561,65 @@ func start_bag_drag(slot_index: int, mouse_pos: Vector2):
 	var slot = bag_slots[slot_index]
 	var slot_rect = Rect2(slot.global_position, slot.size)
 	if item_type == "helmet":
-		set_helmet_equipped(true)
+		helmet_drag_from_inventory = true
+		helmet_equipped_before = is_helmet_equipped()
+		if not helmet_equipped_before:
+			set_helmet_equipped(true)
 		helmet_icon.global_position = slot_rect.position + (slot_rect.size - helmet_icon.size) / 2.0
 		is_dragging = true
 		drag_offset = helmet_icon.global_position - mouse_pos
 		update_drag_hover_state()
 	elif item_type == "club":
-		set_club_equipped("weapon")
+		club_drag_from_inventory = true
+		club_equipped_before = club_equipped_slot
+		if club_equipped_before == "":
+			set_club_equipped("weapon")
 		club_icon.global_position = slot_rect.position + (slot_rect.size - club_icon.size) / 2.0
 		club_icon.z_index = 100
 		is_dragging_club = true
 		club_drag_offset = club_icon.global_position - mouse_pos
+	elif item_type == "shield":
+		shield_drag_from_inventory = true
+		shield_equipped_before = is_shield_equipped()
+		if not shield_equipped_before:
+			set_shield_equipped(true)
+		shield_icon.global_position = slot_rect.position + (slot_rect.size - shield_icon.size) / 2.0
+		shield_icon.z_index = 100
+		is_dragging_shield = true
+		shield_drag_offset = shield_icon.global_position - mouse_pos
 	elif item_type == "armor":
-		set_armor_equipped(true)
+		armor_drag_from_inventory = true
+		armor_equipped_before = is_armor_equipped()
+		if not armor_equipped_before:
+			set_armor_equipped(true)
 		armor_icon.global_position = slot_rect.position + (slot_rect.size - armor_icon.size) / 2.0
 		armor_icon.z_index = 100
 		is_dragging_armor = true
 		armor_drag_offset = armor_icon.global_position - mouse_pos
 	elif item_type == "pants":
-		set_pants_equipped(true)
+		pants_drag_from_inventory = true
+		pants_equipped_before = is_pants_equipped()
+		if not pants_equipped_before:
+			set_pants_equipped(true)
 		pants_icon.global_position = slot_rect.position + (slot_rect.size - pants_icon.size) / 2.0
 		pants_icon.z_index = 100
 		is_dragging_pants = true
 		pants_drag_offset = pants_icon.global_position - mouse_pos
 	elif item_type == "boots":
-		set_boots_equipped(true)
+		boots_drag_from_inventory = true
+		boots_equipped_before = is_boots_equipped()
+		if not boots_equipped_before:
+			set_boots_equipped(true)
 		boots_icon.global_position = slot_rect.position + (slot_rect.size - boots_icon.size) / 2.0
 		boots_icon.z_index = 100
 		is_dragging_boots = true
 		boots_drag_offset = boots_icon.global_position - mouse_pos
+	elif item_type == "meat":
+		meat_drag_origin_slot = slot_index
+		meat_drag_origin_body = null
+		ensure_meat_icon()
+		meat_icon.global_position = slot_rect.position + (slot_rect.size - meat_icon.size) / 2.0
+		meat_icon.visible = true
+		meat_icon.z_index = 100
+		is_dragging_meat = true
+		meat_drag_offset = meat_icon.global_position - mouse_pos

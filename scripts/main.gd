@@ -4,6 +4,7 @@ extends Node2D
 
 const TILE_SIZE = 32
 const ORC_SCENE = preload("res://scenes/enemies/orc.tscn")
+const TROLL_SCENE = preload("res://scenes/enemies/troll.tscn")
 
 func _ready():
 	print("Trithia game started!")
@@ -33,7 +34,7 @@ func _ready():
 	spawn_timer.start()
 
 func spawn_starting_orcs():
-	# Spawn 10 orcs at random spawn points around the world
+	# Spawn 10 enemies at random spawn points around the world
 	var player = $Player
 	var world = $World
 	
@@ -41,15 +42,15 @@ func spawn_starting_orcs():
 	await get_tree().process_frame
 	
 	var available_spawns = world.get_available_spawn_points(player.position)
-	var orcs_to_spawn = min(10, available_spawns.size())
+	var enemies_to_spawn = min(10, available_spawns.size())
 	
 	print("[SPAWN] Found ", available_spawns.size(), " available spawn points")
-	print("[SPAWN] Spawning ", orcs_to_spawn, " orcs")
+	print("[SPAWN] Spawning ", enemies_to_spawn, " enemies")
 	
-	for i in range(orcs_to_spawn):
+	for i in range(enemies_to_spawn):
 		var spawn_pos = available_spawns[i]
-		spawn_orc_at_spawn_point(spawn_pos)
-		print("[SPAWN] Orc ", i + 1, " spawned at: ", spawn_pos)
+		spawn_enemy_at_spawn_point(spawn_pos)
+		print("[SPAWN] Enemy ", i + 1, " spawned at: ", spawn_pos)
 
 func _on_spawn_timer_timeout():
 	"""Periodically spawn orcs at available spawn points"""
@@ -61,22 +62,23 @@ func _on_spawn_timer_timeout():
 	
 	var available_spawns = world.get_available_spawn_points(player.position)
 	
-	# Spawn 1-3 orcs if spawn points are available
+	# Spawn 1-3 enemies if spawn points are available
 	if available_spawns.size() > 0:
 		var num_to_spawn = min(randi_range(1, 3), available_spawns.size())
 		for i in range(num_to_spawn):
 			var random_index = randi_range(0, available_spawns.size() - 1)
 			var spawn_pos = available_spawns[random_index]
-			spawn_orc_at_spawn_point(spawn_pos)
-			print("[SPAWN TIMER] Spawned orc at: ", spawn_pos)
+			spawn_enemy_at_spawn_point(spawn_pos)
+			print("[SPAWN TIMER] Spawned enemy at: ", spawn_pos)
 			available_spawns.remove_at(random_index)
 
-func spawn_orc_at_spawn_point(spawn_pos: Vector2):
-	"""Spawn an orc at a specific spawn point"""
-	var orc = ORC_SCENE.instantiate()
-	orc.position = spawn_pos
-	add_child(orc)
-	print("[SPAWN_FUNC] Orc spawned at spawn point: ", spawn_pos)
+func spawn_enemy_at_spawn_point(spawn_pos: Vector2):
+	"""Spawn an enemy at a specific spawn point"""
+	var scene = ORC_SCENE if randi_range(0, 99) < 75 else TROLL_SCENE
+	var enemy = scene.instantiate()
+	enemy.position = spawn_pos
+	add_child(enemy)
+	print("[SPAWN_FUNC] Enemy spawned at spawn point: ", spawn_pos)
 
 func _process(_delta):
 	# Update depth sorting based on Y position
@@ -87,25 +89,29 @@ func update_depth_sorting():
 	var player = get_node_or_null("Player")
 	
 	if player:
-		# Get all orc children
-		var orcs = []
+		if get_child_count() < 2:
+			return
+		# Get all enemy children
+		var enemies = []
 		for child in get_children():
-			if child.name == "Orc":
-				orcs.append(child)
+			if child.is_in_group("enemies"):
+				enemies.append(child)
 		
-		# Sort all orcs based on Y position relative to player
-		for orc in orcs:
-			if orc:
+		# Sort all enemies based on Y position relative to player
+		for enemy in enemies:
+			if enemy and enemy.get_parent() == self and player.get_parent() == self:
 				# Character with higher Y (lower on screen) should be behind
 				# Character with lower Y (higher on screen) should be in front
-				if player.position.y > orc.position.y:
-					# Player is lower, orc should be in front
-					move_child(orc, 1)
-					move_child(player, 2)
+				var back_index = min(1, get_child_count() - 1)
+				var front_index = min(2, get_child_count() - 1)
+				if player.position.y > enemy.position.y:
+					# Player is lower, enemy should be in front
+					move_child(enemy, back_index)
+					move_child(player, front_index)
 				else:
-					# Orc is lower or same, player should be in front
-					move_child(player, 1)
-					move_child(orc, 2)
+					# Enemy is lower or same, player should be in front
+					move_child(player, back_index)
+					move_child(enemy, front_index)
 
 
 func show_game_over():

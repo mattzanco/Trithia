@@ -29,21 +29,21 @@ static func get_boots_texture() -> Texture2D:
 		var cloth = Color(0.5, 0.45, 0.35)
 		var dark = Color(0.38, 0.33, 0.25)
 		var highlight = Color(0.6, 0.55, 0.45)
-		# Left boot
-		for y in range(16, 24):
+		# Left boot (shifted up to visually center in 32x32 tile)
+		for y in range(14, 22):
 			for x in range(8, 14):
 				img.set_pixel(x, y, cloth)
 		# Right boot
-		for y in range(16, 24):
+		for y in range(14, 22):
 			for x in range(18, 24):
 				img.set_pixel(x, y, cloth)
 		# Soles
 		for x in range(8, 14):
-			img.set_pixel(x, 23, dark)
+			img.set_pixel(x, 21, dark)
 		for x in range(18, 24):
-			img.set_pixel(x, 23, dark)
+			img.set_pixel(x, 21, dark)
 		# Highlights
-		for y in range(17, 20):
+		for y in range(15, 18):
 			img.set_pixel(9, y, highlight)
 			img.set_pixel(19, y, highlight)
 		_boots_texture = ImageTexture.create_from_image(img)

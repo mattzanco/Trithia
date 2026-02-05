@@ -30,6 +30,15 @@ var strength = 10
 var intelligence = 10
 var dexterity = 10
 var speed = 8
+var weapon_attack = 0
+var armor_defense = 0
+var shield_defense = 0
+var meat_regen_timers: Array = []
+var meat_regen_tick = 0.0
+const MEAT_REGEN_DURATION = 60.0
+const MEAT_REGEN_TICK = 10.0
+const MEAT_REGEN_PER_STACK = 1
+const MEAT_MAX_STACKS = 5
 
 # Targeting system
 var targeted_enemy = null  # Reference to the currently targeted enemy
@@ -71,6 +80,9 @@ func _ready():
 	set_meta("intelligence", intelligence)
 	set_meta("dexterity", dexterity)
 	set_meta("speed", speed)
+	set_meta("weapon_attack", weapon_attack)
+	set_meta("armor_defense", armor_defense)
+	set_meta("shield_defense", shield_defense)
 	
 	# Player initialization complete
 
@@ -78,6 +90,7 @@ func _process(_delta):
 	# Update attack cooldown
 	if attack_timer > 0:
 		attack_timer -= _delta
+	update_meat_regen(_delta)
 	
 	# Auto-attack targeted enemy if in range
 	if targeted_enemy != null and attack_timer <= 0:
@@ -1243,7 +1256,7 @@ func get_enemy_at_click(click_position: Vector2) -> Node:
 	var parent = get_parent()
 	if parent:
 		for child in parent.get_children():
-			if child != self and child.get_script() != null and child.get_script().resource_path == "res://scripts/orc.gd":
+			if child != self and child.is_in_group("enemies"):
 				var orc_targetable_tile = child.position + Vector2(0, TILE_SIZE/2)
 				var orc_targetable_tile_x = floor(orc_targetable_tile.x / TILE_SIZE)
 				var orc_targetable_tile_y = floor(orc_targetable_tile.y / TILE_SIZE)
@@ -1266,12 +1279,12 @@ func handle_target_click(click_position: Vector2):
 	var clicked_tile_y = floor(click_position.y / TILE_SIZE)
 	var clicked_tile_center = Vector2(clicked_tile_x * TILE_SIZE + TILE_SIZE/2, clicked_tile_y * TILE_SIZE + TILE_SIZE/2)
 	
-	# Check if there's an enemy on this tile by checking all orcs
+	# Check if there's an enemy on this tile
 	var parent = get_parent()
 	if parent:
 		for child in parent.get_children():
-			# Check if this is an orc by looking at its script
-			if child != self and child.get_script() != null and child.get_script().resource_path == "res://scripts/orc.gd":
+			# Check if this is an enemy
+			if child != self and child.is_in_group("enemies"):
 				# The targetable tile is the lower of the two tiles the sprite occupies
 				var orc_targetable_tile = child.position + Vector2(0, TILE_SIZE/2)
 				var orc_targetable_tile_x = floor(orc_targetable_tile.x / TILE_SIZE)
@@ -1311,9 +1324,9 @@ func perform_attack(target: Node):
 		create_miss_effect(target.position)
 		return
 	
-	# Hit! Calculate damage based on strength with variance
-	# Base damage = strength * 2, with +/- 20% variance
-	var base_damage = strength * 2
+	# Hit! Calculate damage based on strength and weapon with variance
+	# Base damage = (strength * 2) + weapon_attack, with +/- 20% variance
+	var base_damage = get_total_attack()
 	var variance = randi_range(-20, 20) / 100.0  # -20% to +20%
 	var damage = max(1, int(base_damage * (1.0 + variance)))  # Minimum 1 damage
 	
@@ -1336,6 +1349,53 @@ func perform_attack(target: Node):
 		# Check if enemy died
 		if new_hp <= 0 and target.has_method("die"):
 			target.die()
+
+func set_weapon_attack(value: int):
+	weapon_attack = max(0, value)
+	set_meta("weapon_attack", weapon_attack)
+
+func set_armor_defense(value: int):
+	armor_defense = max(0, value)
+	set_meta("armor_defense", armor_defense)
+
+func set_shield_defense(value: int):
+	shield_defense = max(0, value)
+	set_meta("shield_defense", shield_defense)
+
+func get_total_attack() -> int:
+	return (strength * 2) + weapon_attack
+
+func get_total_defense() -> int:
+	return armor_defense + shield_defense
+
+func consume_meat() -> bool:
+	if meat_regen_timers.size() >= MEAT_MAX_STACKS:
+		return false
+	meat_regen_timers.append(MEAT_REGEN_DURATION)
+	return true
+
+func update_meat_regen(delta: float):
+	if meat_regen_timers.is_empty():
+		return
+	for i in range(meat_regen_timers.size() - 1, -1, -1):
+		meat_regen_timers[i] -= delta
+		if meat_regen_timers[i] <= 0.0:
+			meat_regen_timers.remove_at(i)
+	if meat_regen_timers.is_empty():
+		meat_regen_tick = 0.0
+		return
+	meat_regen_tick += delta
+	while meat_regen_tick >= MEAT_REGEN_TICK:
+		meat_regen_tick -= MEAT_REGEN_TICK
+		apply_meat_heal(MEAT_REGEN_PER_STACK)
+
+func apply_meat_heal(amount: int):
+	if amount <= 0:
+		return
+	current_health = min(max_health, current_health + amount)
+	set_meta("current_health", current_health)
+	if health_bar:
+		health_bar.queue_redraw()
 
 func move_to_position(target: Vector2):
 	# Convert click position to tile coordinates (where we want feet to land)
@@ -1669,18 +1729,13 @@ func update_animation(direction: Vector2, walking: bool):
 
 func is_position_occupied(target_position: Vector2) -> bool:
 	# Check if any entity occupies this position
-	# Check against all orcs in the parent
+	# Check against all enemies in the parent
 	var parent = get_parent()
 	if parent:
-		# Get all orc children by checking their script
-		var orc_count = 0
-		var found_orcs = []
-		
+		# Get all enemy children
 		for child in parent.get_children():
-			# Check if this is an orc by looking at its script
-			if child != self and child.get_script() != null and child.get_script().resource_path == "res://scripts/orc.gd":
-				found_orcs.append(child)
-				orc_count += 1
+			# Check if this is an enemy
+			if child != self and child.is_in_group("enemies"):
 				var distance = target_position.distance_to(child.position)
 				# Prevent occupying same tile - use stricter collision
 				var is_colliding = distance < TILE_SIZE
@@ -1693,12 +1748,12 @@ func is_position_occupied(target_position: Vector2) -> bool:
 func is_position_occupied_strict(target_position: Vector2) -> bool:
 	# Strict collision check for pathfinding - only block the exact tile
 	# This prevents pathfinding from getting stuck in a constrained search space
-	# Check against all orcs in the parent
+	# Check against all enemies in the parent
 	var parent = get_parent()
 	if parent:
-		# Get all orc children by checking their script
+		# Get all enemy children
 		for child in parent.get_children():
-			if child != self and child.get_script() != null and child.get_script().resource_path == "res://scripts/orc.gd":
+			if child != self and child.is_in_group("enemies"):
 				var distance = target_position.distance_to(child.position)
 				# Only block if very close (same tile, with small tolerance)
 				var is_colliding = distance < 5.0
@@ -1718,6 +1773,8 @@ func die():
 	# Load and attach the dead body script
 	var dead_body_script = load("res://scripts/dead_body.gd")
 	dead_body.set_script(dead_body_script)
+	dead_body.set_meta("is_player_body", true)
+	dead_body.set_meta("body_skin_color", Color(0.95, 0.8, 0.6))
 	
 	# Add the dead body to the world node so it renders with terrain
 	var parent = get_parent()

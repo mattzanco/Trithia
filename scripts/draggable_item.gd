@@ -170,6 +170,8 @@ func start_drag_rendering():
 	# If this item draws itself, create a proxy that redraws
 	if has_method("_draw"):
 		drag_visual.set_script(get_script())
+		for meta_key in get_meta_list():
+			drag_visual.set_meta(meta_key, get_meta(meta_key))
 		drag_visual.queue_redraw()
 
 func end_drag_rendering():
