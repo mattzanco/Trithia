@@ -338,6 +338,36 @@ func is_walkable_for_player(world_position: Vector2, from_position: Vector2 = Ve
 		return true
 	return false
 
+func is_walkable_for_actor(world_position: Vector2, from_feet_position: Vector2 = Vector2.INF, inside_building: Node = null, allow_roof_edge: bool = true, allow_doors: bool = true) -> bool:
+	var tile_x = int(floor(world_position.x / TILE_SIZE))
+	var tile_y = int(floor(world_position.y / TILE_SIZE))
+	var tile = Vector2i(tile_x, tile_y)
+	var terrain_type = get_terrain_type_from_noise(tile_x, tile_y)
+	if terrain_type == "water":
+		return false
+	var building = get_building_for_tile(tile)
+	if building.is_empty():
+		if inside_building == null:
+			return true
+		var from_tile = Vector2i.ZERO
+		if from_feet_position != Vector2.INF:
+			from_tile = get_tile_coords(from_feet_position)
+		var inside_entry = get_building_entry_for_node(inside_building)
+		if inside_entry.is_empty():
+			return true
+		if from_tile == inside_entry["door"]:
+			return is_building_door_open(inside_entry)
+		return false
+	if inside_building != null and building["building"] == inside_building:
+		if tile == building["door"]:
+			return allow_doors
+		return is_tile_in_building_interior(tile, building["rect"])
+	if tile == building["door"]:
+		return allow_doors and is_building_door_open(building)
+	if allow_roof_edge and inside_building == null and is_tile_on_building_roof_edge(tile, building["rect"]):
+		return true
+	return false
+
 func add_building(building: Node, rect: Rect2i, door_tile: Vector2i):
 	building_zones.append({"building": building, "rect": rect, "door": door_tile})
 
@@ -366,6 +396,9 @@ func get_building_entry_for_node(building_node: Node) -> Dictionary:
 		if building["building"] == building_node:
 			return building
 	return {}
+
+func get_building_zones() -> Array:
+	return building_zones
 
 func is_building_door_open(building_entry: Dictionary) -> bool:
 	if building_entry.is_empty():
@@ -412,12 +445,20 @@ func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 	
 	# Check if goal is walkable (apply feet offset to account for sprite animation)
 	var feet_offset = Vector2(0, TILE_SIZE / 2)
+	var is_enemy = requester != null and requester.has_method("is_in_group") and requester.is_in_group("enemies")
+	var inside_building = null
+	if is_enemy and requester.has_method("get_current_building"):
+		inside_building = requester.get_current_building()
 	var goal_feet = goal + feet_offset
 	var goal_tile_x = floor(goal_feet.x / TILE_SIZE)
 	var goal_tile_y = floor(goal_feet.y / TILE_SIZE)
 	var goal_tile_center = Vector2(goal_tile_x * TILE_SIZE + TILE_SIZE/2, goal_tile_y * TILE_SIZE + TILE_SIZE/2)
-	if not is_walkable(goal_tile_center):
-		return []
+	if is_enemy:
+		if not is_walkable_for_actor(goal_feet, start + feet_offset, inside_building, false, false):
+			return []
+	else:
+		if not is_walkable_for_player(goal_tile_center, start):
+			return []
 	
 	# A* pathfinding
 	var open_set = [start]
@@ -466,8 +507,12 @@ func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 			var tile_y = floor(feet_position.y / TILE_SIZE)
 			var tile_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
 			
-			if not is_walkable(tile_center):
-				continue
+			if is_enemy:
+				if not is_walkable_for_actor(feet_position, current + feet_offset, inside_building, false, false):
+					continue
+			else:
+				if not is_walkable_for_player(tile_center, current):
+					continue
 			
 			# EXTRA SAFEGUARD: Double-check terrain type directly isn't water
 			# This catches edge cases where is_walkable might have a bug

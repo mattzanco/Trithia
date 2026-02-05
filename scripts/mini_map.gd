@@ -26,6 +26,7 @@ var color_player = Color(1.0, 1.0, 0.0)  # Yellow
 var color_enemy = Color(1.0, 0.2, 0.2)  # Red
 var color_fog = Color(0.05, 0.05, 0.05)  # Nearly black for undiscovered
 var color_discovered_dim = 0.6  # Multiply color by this for discovered but not currently visible
+var color_building = Color(0.35, 0.25, 0.2)
 
 func _ready():
 	# Find player and world references
@@ -129,6 +130,30 @@ func _draw():
 			else:
 				# Not discovered yet - draw fog
 				draw_rect(Rect2(map_x, map_y, PIXEL_PER_TILE, PIXEL_PER_TILE), color_fog)
+
+	# Draw buildings on top of terrain (only if discovered)
+	if world != null and world.has_method("get_building_zones"):
+		var zones = world.get_building_zones()
+		for entry in zones:
+			if not entry.has("rect"):
+				continue
+			var rect: Rect2i = entry["rect"]
+			var start_x = max(rect.position.x, player_tile_x - view_radius)
+			var end_x = min(rect.position.x + rect.size.x - 1, player_tile_x + view_radius)
+			var start_y = max(rect.position.y, player_tile_y - view_radius)
+			var end_y = min(rect.position.y + rect.size.y - 1, player_tile_y + view_radius)
+			if end_x < start_x or end_y < start_y:
+				continue
+			for y in range(start_y, end_y + 1):
+				for x in range(start_x, end_x + 1):
+					var tile_key = Vector2(x, y)
+					if not discovered_tiles.has(tile_key):
+						continue
+					var dx = x - player_tile_x
+					var dy = y - player_tile_y
+					var map_x = (map_size / 2) + (dx * PIXEL_PER_TILE) - PIXEL_PER_TILE / 2
+					var map_y = (map_size / 2) + (dy * PIXEL_PER_TILE) - PIXEL_PER_TILE / 2
+					draw_rect(Rect2(map_x, map_y, PIXEL_PER_TILE, PIXEL_PER_TILE), color_building)
 	
 	# Draw player at center (always on top)
 	var player_x = map_size / 2
