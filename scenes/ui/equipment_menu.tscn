@@ -136,6 +136,22 @@ theme_override_styles/panel = SubResource("2_slot_style")
 custom_minimum_size = Vector2(32, 32)
 theme_override_styles/panel = SubResource("2_slot_style")
 
+[node name="BeltSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
+custom_minimum_size = Vector2(32, 32)
+theme_override_styles/panel = SubResource("2_slot_style")
+
+[node name="GlovesSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
+custom_minimum_size = Vector2(32, 32)
+theme_override_styles/panel = SubResource("2_slot_style")
+modulate = Color(1, 1, 1, 0)
+mouse_filter = 2
+
 [node name="BootsSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
 custom_minimum_size = Vector2(32, 32)
 theme_override_styles/panel = SubResource("2_slot_style")
+
+[node name="CloakSlot" type="Panel" parent="Panel/Margin/Center/VBox/SlotGrid"]
+custom_minimum_size = Vector2(32, 32)
+theme_override_styles/panel = SubResource("2_slot_style")
+modulate = Color(1, 1, 1, 0)
+mouse_filter = 2
