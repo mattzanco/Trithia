@@ -1245,7 +1245,7 @@ func handle_shift_click(click_position: Vector2):
 		terrain_type = world.get_terrain_type_from_noise(tile_x, tile_y)
 	var is_walkable = false
 	if world and world.has_method("is_walkable"):
-		is_walkable = world.is_walkable(tile_center)
+		is_walkable = world.is_walkable_for_player(tile_center, position) if world.has_method("is_walkable_for_player") else world.is_walkable(tile_center)
 	var info_text = "Tile (%d, %d)\nTerrain: %s\nWalkable: %s" % [tile_x, tile_y, terrain_type, "Yes" if is_walkable else "No"]
 	DRAGGABLE_SCRIPT.show_center_text(info_text, self)
 
@@ -1411,7 +1411,7 @@ func move_to_position(target: Vector2):
 	
 	# Check if clicked tile is walkable
 	if world and world.has_method("is_walkable"):
-		if not world.is_walkable(clicked_tile_center):
+		if not (world.is_walkable_for_player(clicked_tile_center, position) if world.has_method("is_walkable_for_player") else world.is_walkable(clicked_tile_center)):
 			return  # Can't walk there
 	
 	# Check if position is occupied by another entity
@@ -1503,7 +1503,7 @@ func process_next_path_step():
 			var tile_y = floor(feet_position.y / TILE_SIZE)
 			var tile_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
 			
-			if not world.is_walkable(tile_center):
+			if not (world.is_walkable_for_player(tile_center, position) if world.has_method("is_walkable_for_player") else world.is_walkable(tile_center)):
 				# Path is blocked, clear queue and stop
 				print("[PATHSTEP] Next tile is no longer walkable")
 				path_queue.clear()
@@ -1686,7 +1686,7 @@ func _physics_process(delta):
 					var tile_y = floor(feet_position.y / TILE_SIZE)
 					var tile_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
 					
-					can_move = world.is_walkable(tile_center)
+					can_move = world.is_walkable_for_player(tile_center, position) if world.has_method("is_walkable_for_player") else world.is_walkable(tile_center)
 					
 					# For diagonal movement, also check that at least one adjacent tile is walkable
 					# This prevents cutting corners through walls/water

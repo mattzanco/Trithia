@@ -661,6 +661,14 @@ func draw_orc_side(img: Image, skin: Color, dark_skin: Color, hair: Color, muscl
 				img.set_pixel(outline_x, y, outline)
 
 func _physics_process(delta):
+	# Prevent enemies from entering the town safe zone
+	if world != null and world.has_method("is_point_in_town"):
+		if world.is_point_in_town(position):
+			move_out_of_town()
+			return
+		if player != null and world.is_point_in_town(player.position):
+			targeted_enemy = null
+			current_state = AIState.IDLE
 	# Handle attack cooldown
 	if attack_timer > 0.0:
 		attack_timer -= delta
@@ -727,12 +735,15 @@ func _physics_process(delta):
 	
 	# Check if player is in detection range
 	if player != null:
-		var distance_to_player = position.distance_to(player.position)
-		if targeted_enemy == null:
-			# Only detect new target if we don't have one
-			if distance_to_player <= detection_range:
-				targeted_enemy = player
-				current_state = AIState.CHASE
+		if world != null and world.has_method("is_point_in_town") and world.is_point_in_town(player.position):
+			pass
+		else:
+			var distance_to_player = position.distance_to(player.position)
+			if targeted_enemy == null:
+				# Only detect new target if we don't have one
+				if distance_to_player <= detection_range:
+					targeted_enemy = player
+					current_state = AIState.CHASE
 	
 	# Update AI state based on distance to player
 	if targeted_enemy != null:
@@ -1177,6 +1188,36 @@ func try_surround_reposition() -> bool:
 			return true
 	
 	return false
+
+func move_out_of_town():
+	if world == null:
+		return
+	if not world.has_method("get_town_center") or not world.has_method("get_town_radius_world"):
+		return
+	var town_center = world.get_town_center()
+	var radius = world.get_town_radius_world()
+	var base_dir = (position - town_center).normalized()
+	if base_dir == Vector2.ZERO:
+		base_dir = Vector2.RIGHT
+	var directions = [
+		base_dir,
+		base_dir.rotated(deg_to_rad(45)),
+		base_dir.rotated(deg_to_rad(-45)),
+		base_dir.rotated(deg_to_rad(90)),
+		base_dir.rotated(deg_to_rad(-90))
+	]
+	for dir in directions:
+		var target = town_center + dir * (radius + TILE_SIZE * 2)
+		var snapped = Vector2(
+			floor(target.x / TILE_SIZE) * TILE_SIZE + TILE_SIZE / 2,
+			floor(target.y / TILE_SIZE) * TILE_SIZE + TILE_SIZE / 2
+		)
+		if world.has_method("is_walkable") and not world.is_walkable(snapped):
+			continue
+		target_position = snapped
+		is_moving = true
+		current_direction = Vector2(sign(dir.x), 0) if abs(dir.x) > abs(dir.y) else Vector2(0, sign(dir.y))
+		return
 
 
 func calculate_direction(dx: int, dy: int) -> Vector2:

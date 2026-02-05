@@ -5,6 +5,8 @@ extends Node2D
 const TILE_SIZE = 32
 const CHUNK_SIZE = 16  # 16x16 tiles per chunk
 const RENDER_DISTANCE = 2  # How many chunks to render around player
+const TOWN_RADIUS_TILES = 30
+const TOWN_CENTER = Vector2(TILE_SIZE / 2, TILE_SIZE / 2)
 
 var generated_chunks = {}  # Dictionary to track which chunks have been generated
 var terrain_data = {}  # Dictionary to store terrain type at each tile position
@@ -13,6 +15,8 @@ var spawn_points_per_chunk = 2  # Number of spawn points to create per chunk
 var noise: FastNoiseLite
 var last_drawn_count = 0
 var time_passed = 0.0  # For water animation
+var building_zones: Array = []
+var player_inside_building: Node = null
 
 # Water animation parameters
 var water_wave_speed = 3.0  # Speed of the wave
@@ -180,6 +184,9 @@ func generate_spawn_points_for_chunk(chunk_pos: Vector2i):
 			
 			# Check if walkable and not too close to other spawn points
 			if is_walkable(spawn_pos):
+				if is_point_in_town(spawn_pos):
+					attempts += 1
+					continue
 				var too_close = false
 				for existing_spawn in spawn_points:
 					if spawn_pos.distance_to(existing_spawn) < TILE_SIZE * 5:
@@ -200,9 +207,20 @@ func get_available_spawn_points(player_pos: Vector2) -> Array:
 	"""Get all spawn points that are not visible to the player"""
 	var available = []
 	for spawn_pos in spawn_points:
+		if is_point_in_town(spawn_pos):
+			continue
 		if not is_spawn_point_visible(spawn_pos, player_pos):
 			available.append(spawn_pos)
 	return available
+
+func get_town_center() -> Vector2:
+	return TOWN_CENTER
+
+func get_town_radius_world() -> float:
+	return TOWN_RADIUS_TILES * TILE_SIZE
+
+func is_point_in_town(world_position: Vector2) -> bool:
+	return world_position.distance_to(TOWN_CENTER) <= get_town_radius_world()
 
 func _draw():
 	# Draw all terrain tiles with textures or color fallback
@@ -243,10 +261,15 @@ func is_walkable(world_position: Vector2) -> bool:
 	# Calculate which tile this position is in
 	var tile_x = int(floor(world_position.x / TILE_SIZE))
 	var tile_y = int(floor(world_position.y / TILE_SIZE))
+	var tile = Vector2i(tile_x, tile_y)
 	
 	# Check terrain directly from noise - this is the authoritative source
 	var terrain_type = get_terrain_type_from_noise(tile_x, tile_y)
-	return terrain_type != "water"
+	if terrain_type == "water":
+		return false
+	if is_tile_blocked_by_building(tile):
+		return false
+	return true
 	
 	# If terrain not yet generated, check if it would be water based on noise
 	# This provides early validation before terrain is fully generated
@@ -283,6 +306,78 @@ func get_terrain_at(world_position: Vector2) -> String:
 		return "grass"
 	else:
 		return "dirt"
+
+func is_walkable_for_player(world_position: Vector2, from_position: Vector2 = Vector2.INF) -> bool:
+	var tile_x = int(floor(world_position.x / TILE_SIZE))
+	var tile_y = int(floor(world_position.y / TILE_SIZE))
+	var tile = Vector2i(tile_x, tile_y)
+	var terrain_type = get_terrain_type_from_noise(tile_x, tile_y)
+	if terrain_type == "water":
+		return false
+	var building = get_building_for_tile(tile)
+	if building.is_empty():
+		if player_inside_building == null:
+			return true
+		var from_tile = Vector2i.ZERO
+		if from_position != Vector2.INF:
+			var from_feet = from_position + Vector2(0, TILE_SIZE / 2)
+			from_tile = get_tile_coords(from_feet)
+		var inside_entry = get_building_entry_for_node(player_inside_building)
+		if inside_entry.is_empty():
+			return true
+		return from_tile == inside_entry["door"]
+	if tile == building["door"]:
+		return true
+	if player_inside_building != null and building["building"] == player_inside_building:
+		return is_tile_in_building_interior(tile, building["rect"])
+	if player_inside_building == null and is_tile_on_building_roof_edge(tile, building["rect"]):
+		return true
+	return false
+
+func add_building(building: Node, rect: Rect2i, door_tile: Vector2i):
+	building_zones.append({"building": building, "rect": rect, "door": door_tile})
+
+func remove_building(building: Node):
+	for i in range(building_zones.size() - 1, -1, -1):
+		if building_zones[i]["building"] == building:
+			building_zones.remove_at(i)
+	if player_inside_building == building:
+		player_inside_building = null
+
+func set_player_inside_building(building: Node):
+	player_inside_building = building
+
+func clear_player_inside_building(building: Node):
+	if player_inside_building == building:
+		player_inside_building = null
+
+func get_building_for_tile(tile: Vector2i) -> Dictionary:
+	for building in building_zones:
+		if is_tile_in_rect(tile, building["rect"]):
+			return building
+	return {}
+
+func get_building_entry_for_node(building_node: Node) -> Dictionary:
+	for building in building_zones:
+		if building["building"] == building_node:
+			return building
+	return {}
+
+func is_tile_blocked_by_building(tile: Vector2i) -> bool:
+	return not get_building_for_tile(tile).is_empty()
+
+func is_tile_in_rect(tile: Vector2i, rect: Rect2i) -> bool:
+	return tile.x >= rect.position.x and tile.x < rect.position.x + rect.size.x and tile.y >= rect.position.y and tile.y < rect.position.y + rect.size.y
+
+func is_tile_in_building_interior(tile: Vector2i, rect: Rect2i) -> bool:
+	return tile.x >= rect.position.x and tile.x < rect.position.x + rect.size.x and tile.y >= rect.position.y + 1 and tile.y < rect.position.y + rect.size.y
+
+func is_tile_on_building_roof_edge(tile: Vector2i, rect: Rect2i) -> bool:
+	return tile.y == rect.position.y and tile.x >= rect.position.x and tile.x < rect.position.x + rect.size.x
+
+func get_tile_coords(world_position: Vector2) -> Vector2i:
+	return Vector2i(int(floor(world_position.x / TILE_SIZE)), int(floor(world_position.y / TILE_SIZE)))
+
 func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 	"""Shared pathfinding function used by both player and orcs.
 	

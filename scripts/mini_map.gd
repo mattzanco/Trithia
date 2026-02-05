@@ -29,7 +29,7 @@ var color_discovered_dim = 0.6  # Multiply color by this for discovered but not 
 
 func _ready():
 	# Find player and world references
-	var root = get_tree().root.get_child(get_tree().root.get_child_count() - 1)
+	var root = get_tree().get_root()
 	player = root.find_child("Player", true, false)
 	world = root.find_child("World", true, false)
 	
@@ -74,10 +74,11 @@ func _process(_delta):
 									continue
 								var neighbor_x = tile_x + nx
 								var neighbor_y = tile_y + ny
-								var neighbor_noise = world.noise.get_noise_2d(neighbor_x, neighbor_y)
-								if neighbor_noise < -0.3:  # Water threshold
-									is_next_to_water = true
-									break
+								if world != null and world.has_method("get_terrain_type_from_noise"):
+									var neighbor_terrain = world.get_terrain_type_from_noise(neighbor_x, neighbor_y)
+									if neighbor_terrain == "water":
+										is_next_to_water = true
+										break
 							if is_next_to_water:
 								break
 						
