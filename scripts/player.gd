@@ -1719,6 +1719,15 @@ func die():
 	# Player died - create a dead body visual at player's feet position
 	print("[PLAYER_DIE] Player died at position ", position)
 	
+	var parent = get_parent()
+	var camera = get_node_or_null("Camera2D")
+	if camera and parent:
+		# Detach camera so it stays fixed on the death location.
+		camera.position_smoothing_enabled = false
+		camera.reparent(parent, true)
+		camera.enabled = true
+		camera.current = true
+	
 	var dead_body = Area2D.new()
 	dead_body.position = position + Vector2(0, TILE_SIZE/2)  # Position at the feet tile
 	dead_body.z_index = 0  # On the ground, above terrain
@@ -1730,7 +1739,6 @@ func die():
 	dead_body.set_meta("body_skin_color", Color(0.95, 0.8, 0.6))
 	
 	# Add the dead body to the world node so it renders with terrain
-	var parent = get_parent()
 	if parent:
 		var world = parent.get_node_or_null("World")
 		if world:

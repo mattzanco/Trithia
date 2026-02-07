@@ -11,18 +11,8 @@ func _ready():
 	print("Trithia game started!")
 	print("Main node ready, about to wait for process frame")
 	
-	# Write debug to file
-	var debug = FileAccess.open("res://debug_log.txt", FileAccess.WRITE)
-	if debug:
-		debug.store_line("Game started")
-		debug.flush()
-	
 	await get_tree().process_frame  # Wait one frame for player to be ready
 	print("About to call spawn_starting_orcs()")
-	
-	if debug:
-		debug.store_line("About to spawn orcs")
-		debug.flush()
 	
 	setup_town()
 	spawn_starting_orcs()
