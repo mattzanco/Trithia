@@ -1121,8 +1121,10 @@ func _physics_process(delta):
 						position = escape_tile_center
 						break
 	
-	# Update z_index based on y position to ensure proper layering
-	z_index = clampi(int(position.y / 10) + 1000, 0, 10000)
+	# Update z_index only when not using Y-sorting
+	var parent = get_parent()
+	if not (parent is Node2D and parent.y_sort_enabled):
+		z_index = clampi(int(position.y / 10) + 1000, 0, 10000)
 
 
 func find_and_move_to_nearest_adjacent_tile():

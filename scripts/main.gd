@@ -128,6 +128,8 @@ func spawn_town_buildings(world: Node, town_center: Vector2):
 			ysort_container.add_child(building)
 		else:
 			add_child(building)
+		if world.has_method("remove_trees_in_rect"):
+			world.remove_trees_in_rect(rect)
 		placed += 1
 
 func get_random_town_position(world: Node, town_center: Vector2, town_radius: float) -> Vector2:
@@ -154,9 +156,28 @@ func is_rect_overlapping(rect: Rect2i, existing_rects: Array) -> bool:
 func is_building_area_walkable(world: Node, rect: Rect2i) -> bool:
 	if world == null or not world.has_method("is_walkable"):
 		return true
+	if world.has_method("is_tile_blocked_by_tree"):
+		var door_tile = Vector2i(rect.position.x + int(rect.size.x / 2), rect.position.y + rect.size.y - 1)
+		var outside_tile = Vector2i(door_tile.x, door_tile.y + 1)
+		var porch_left = Vector2i(door_tile.x - 1, door_tile.y + 1)
+		var porch_right = Vector2i(door_tile.x + 1, door_tile.y + 1)
+		if world.is_tile_blocked_by_tree(door_tile):
+			return false
+		if world.is_tile_blocked_by_tree(outside_tile):
+			return false
+		if world.is_tile_blocked_by_tree(porch_left):
+			return false
+		if world.is_tile_blocked_by_tree(porch_right):
+			return false
 	for x in range(rect.position.x, rect.position.x + rect.size.x):
 		for y in range(rect.position.y, rect.position.y + rect.size.y):
 			var pos = Vector2(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2)
+			if world.has_method("get_forced_terrain"):
+				if world.get_forced_terrain(Vector2i(x, y)) == "dirt":
+					return false
+			if world.has_method("is_tile_blocked_by_tree"):
+				if world.is_tile_blocked_by_tree(Vector2i(x, y)):
+					return false
 			if not world.is_walkable(pos):
 				return false
 	return true

@@ -1655,9 +1655,11 @@ func _physics_process(delta):
 	if world and world.has_method("update_world"):
 		world.update_world(global_position)
 	
-	# Update z_index based on y position to ensure proper layering
-	# Clamp to valid range to avoid exceeding Godot's z_index limits
-	z_index = clampi(int(position.y / 10) + 1000, 0, 10000)
+	# Update z_index only when not using Y-sorting
+	var parent = get_parent()
+	if not (parent is Node2D and parent.y_sort_enabled):
+		# Clamp to valid range to avoid exceeding Godot's z_index limits
+		z_index = clampi(int(position.y / 10) + 1000, 0, 10000)
 
 func update_animation(direction: Vector2, walking: bool):
 	var anim_name = "walk_" if walking else "idle_"

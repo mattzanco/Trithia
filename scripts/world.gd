@@ -13,6 +13,8 @@ const TOWN_OFFSET_TILES = 160
 const TOWN_CELL_CHANCE = 0.45
 const TOWN_ROAD_WIDTH = 2
 const TOWN_CONNECT_COUNT = 2
+const TREE_TRUNK_SCRIPT = preload("res://scripts/tree_trunk.gd")
+const TREE_CANOPY_SCRIPT = preload("res://scripts/tree_canopy.gd")
 
 var generated_chunks = {}  # Dictionary to track which chunks have been generated
 var terrain_data = {}  # Dictionary to store terrain type at each tile position
@@ -20,7 +22,11 @@ var chunk_tiles = {}  # Dictionary of chunk_pos -> Array of tile world positions
 var spawn_points = []  # Array of spawn point positions (world positions)
 var spawn_points_per_chunk = 2  # Number of spawn points to create per chunk
 var chunk_spawn_points = {}  # Dictionary of chunk_pos -> Array of spawn points
+var tree_nodes = {}  # Dictionary of chunk_pos -> Array of tree nodes
+var tree_trunk_tiles = {}  # Dictionary of chunk_pos -> Array of trunk tiles
+var tree_trunk_blockers = {}  # Dictionary of Vector2i -> true
 var noise: FastNoiseLite
+var tree_noise: FastNoiseLite
 var world_seed = 0
 var last_drawn_count = 0
 var time_passed = 0.0  # For water animation
@@ -54,6 +60,11 @@ func _ready():
 	noise.seed = world_seed
 	noise.noise_type = FastNoiseLite.TYPE_PERLIN
 	noise.frequency = 0.05
+	
+	tree_noise = FastNoiseLite.new()
+	tree_noise.seed = world_seed + 1337
+	tree_noise.noise_type = FastNoiseLite.TYPE_PERLIN
+	tree_noise.frequency = 0.02
 	
 	# Load terrain textures using Image class to bypass import system
 	var grass_image = Image.new()
@@ -91,6 +102,7 @@ func _ready():
 
 	# Generate initial terrain around origin
 	update_world(Vector2.ZERO)
+	call_deferred("reparent_trees_to_ysort")
 
 func _process(_delta):
 	# Accumulate time for water animation
@@ -158,6 +170,7 @@ func generate_chunk(chunk_pos: Vector2i):
 	# Generate spawn points for this chunk
 	generate_spawn_points_for_chunk(chunk_pos)
 	chunk_tiles[chunk_pos] = tile_list
+	generate_trees_for_chunk(chunk_pos)
 	
 	# Trigger redraw when new terrain is generated
 	queue_redraw()
@@ -188,6 +201,99 @@ func get_render_terrain_type(tile_x: int, tile_y: int) -> String:
 	if should_apply_sand(tile_x, tile_y):
 		return "sand"
 	return base
+
+func should_place_tree(tile_x: int, tile_y: int) -> bool:
+	var tile = Vector2i(tile_x, tile_y)
+	var forced = get_forced_terrain(tile)
+	if forced != "" and forced != "grass":
+		return false
+	if is_tile_blocked_by_building(tile):
+		return false
+	var render_terrain = get_render_terrain_type(tile_x, tile_y)
+	if render_terrain != "grass" and render_terrain != "dirt":
+		return false
+	var region = tree_noise.get_noise_2d(float(tile_x) * 0.5, float(tile_y) * 0.5)
+	var density = 0.02
+	if region > 0.35:
+		density = 0.08
+	if region > 0.55:
+		density = 0.16
+	return rand01(Vector2i(tile_x, tile_y), 97) < density
+
+func generate_trees_for_chunk(chunk_pos: Vector2i):
+	if tree_nodes.has(chunk_pos):
+		return
+	var start_x = chunk_pos.x * CHUNK_SIZE
+	var start_y = chunk_pos.y * CHUNK_SIZE
+	var nodes: Array = []
+	var trunks: Array = []
+	var ysort = get_tree().get_root().find_child("YSort", true, false)
+	for x in range(CHUNK_SIZE):
+		for y in range(CHUNK_SIZE):
+			var tile_x = start_x + x
+			var tile_y = start_y + y
+			if not should_place_tree(tile_x, tile_y):
+				continue
+			var tile = Vector2i(tile_x, tile_y)
+			if tree_trunk_blockers.has(tile):
+				continue
+			var trunk = Node2D.new()
+			trunk.name = "TreeTrunk"
+			# Nudge trunk up so the player at the same tile renders in front.
+			trunk.position = tile_to_world_center(tile) + Vector2(0, -6)
+			trunk.set_script(TREE_TRUNK_SCRIPT)
+			trunk.set_meta("trunk_tile", tile)
+			var canopy = Node2D.new()
+			canopy.name = "TreeCanopy"
+			canopy.position = trunk.position + Vector2(0, -TILE_SIZE)
+			canopy.set_script(TREE_CANOPY_SCRIPT)
+			canopy.set_meta("trunk_tile", tile)
+			if ysort:
+				ysort.add_child(trunk)
+				ysort.add_child(canopy)
+			else:
+				add_child(trunk)
+				add_child(canopy)
+			nodes.append(trunk)
+			nodes.append(canopy)
+			trunks.append(tile)
+			tree_trunk_blockers[tile] = true
+	tree_nodes[chunk_pos] = nodes
+	tree_trunk_tiles[chunk_pos] = trunks
+
+func remove_trees_in_rect(rect: Rect2i):
+	for chunk_pos in tree_nodes.keys():
+		var nodes = tree_nodes[chunk_pos]
+		var remaining_nodes: Array = []
+		var removed_tiles = {}
+		for node in nodes:
+			if node == null or not is_instance_valid(node):
+				continue
+			if node.has_meta("trunk_tile"):
+				var tile: Vector2i = node.get_meta("trunk_tile")
+				if is_tile_in_rect(tile, rect):
+					removed_tiles[tile] = true
+					node.queue_free()
+					continue
+			remaining_nodes.append(node)
+		tree_nodes[chunk_pos] = remaining_nodes
+		if removed_tiles.size() > 0 and tree_trunk_tiles.has(chunk_pos):
+			var remaining_tiles: Array = []
+			for tile in tree_trunk_tiles[chunk_pos]:
+				if removed_tiles.has(tile):
+					tree_trunk_blockers.erase(tile)
+					continue
+				remaining_tiles.append(tile)
+			tree_trunk_tiles[chunk_pos] = remaining_tiles
+
+func reparent_trees_to_ysort():
+	var ysort = get_tree().get_root().find_child("YSort", true, false)
+	if not ysort:
+		return
+	for chunk_pos in tree_nodes.keys():
+		for tree in tree_nodes[chunk_pos]:
+			if tree and is_instance_valid(tree) and tree.get_parent() != ysort:
+				tree.reparent(ysort, true)
 
 func should_apply_sand(tile_x: int, tile_y: int) -> bool:
 	# Only consider sand next to water, with a noisy chance for organic patches.
@@ -270,6 +376,16 @@ func unload_chunk(chunk_pos: Vector2i):
 		var points = chunk_spawn_points[chunk_pos]
 		for spawn_pos in points:
 			spawn_points.erase(spawn_pos)
+		chunk_spawn_points.erase(chunk_pos)
+	if tree_nodes.has(chunk_pos):
+		for tree in tree_nodes[chunk_pos]:
+			if tree and is_instance_valid(tree):
+				tree.queue_free()
+		tree_nodes.erase(chunk_pos)
+	if tree_trunk_tiles.has(chunk_pos):
+		for tile in tree_trunk_tiles[chunk_pos]:
+			tree_trunk_blockers.erase(tile)
+		tree_trunk_tiles.erase(chunk_pos)
 	# Allow regeneration when revisiting
 	generated_chunks.erase(chunk_pos)
 
@@ -587,6 +703,8 @@ func is_walkable_for_player(world_position: Vector2, from_position: Vector2 = Ve
 	var terrain_type = get_terrain_type_from_noise(tile_x, tile_y)
 	if terrain_type == "water":
 		return false
+	if is_tile_blocked_by_tree(tile):
+		return false
 	var building = get_building_for_tile(tile)
 	if building.is_empty():
 		if player_inside_building == null:
@@ -617,6 +735,8 @@ func is_walkable_for_actor(world_position: Vector2, from_feet_position: Vector2 
 	var tile = Vector2i(tile_x, tile_y)
 	var terrain_type = get_terrain_type_from_noise(tile_x, tile_y)
 	if terrain_type == "water":
+		return false
+	if is_tile_blocked_by_tree(tile):
 		return false
 	var building = get_building_for_tile(tile)
 	if building.is_empty():
@@ -687,6 +807,9 @@ func is_building_door_open(building_entry: Dictionary) -> bool:
 
 func is_tile_blocked_by_building(tile: Vector2i) -> bool:
 	return not get_building_for_tile(tile).is_empty()
+
+func is_tile_blocked_by_tree(tile: Vector2i) -> bool:
+	return tree_trunk_blockers.has(tile)
 
 func is_tile_in_rect(tile: Vector2i, rect: Rect2i) -> bool:
 	return tile.x >= rect.position.x and tile.x < rect.position.x + rect.size.x and tile.y >= rect.position.y and tile.y < rect.position.y + rect.size.y
