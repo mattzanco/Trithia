@@ -35,7 +35,7 @@ func _process(_delta):
 		return
 	var player_feet = player.position + Vector2(0, TILE_SIZE / 2)
 	var player_tile = get_tile_coords(player_feet)
-	var inside_rect = is_tile_in_rect(player_tile, building_rect)
+	var inside_rect = is_tile_in_interior(player_tile, building_rect)
 	if player_tile == door_tile:
 		if world.has_method("set_player_inside_building"):
 			world.set_player_inside_building(self)
@@ -134,6 +134,9 @@ func get_tile_coords(world_position: Vector2) -> Vector2i:
 
 func is_tile_in_rect(tile: Vector2i, rect: Rect2i) -> bool:
 	return tile.x >= rect.position.x and tile.x < rect.position.x + rect.size.x and tile.y >= rect.position.y and tile.y < rect.position.y + rect.size.y
+
+func is_tile_in_interior(tile: Vector2i, rect: Rect2i) -> bool:
+	return tile.x >= rect.position.x and tile.x < rect.position.x + rect.size.x and tile.y >= rect.position.y + 1 and tile.y < rect.position.y + rect.size.y
 
 func is_player_on_door_tile(player_node: Node) -> bool:
 	if player_node == null:

@@ -28,6 +28,10 @@ var last_player_tile = Vector2.ZERO
 var surround_move_timer = 0.0
 var surround_move_interval = 3.0  # Move to new position every 3 seconds
 
+# Patrol behavior
+var patrol_move_timer = 0.0
+var patrol_move_interval = 1.5  # Average delay between patrol steps
+
 # Position tracking to detect stuck/oscillating movement
 var recent_positions = []
 var max_position_history = 6
@@ -676,6 +680,16 @@ func _physics_process(delta):
 	# Handle surround move timer
 	if surround_move_timer > 0.0:
 		surround_move_timer -= delta
+
+	# Validate references
+	if player != null and not is_instance_valid(player):
+		player = null
+	if targeted_enemy != null and not is_instance_valid(targeted_enemy):
+		targeted_enemy = null
+
+	# Patrol timer
+	if patrol_move_timer > 0.0:
+		patrol_move_timer -= delta
 	
 	# Update blacklist timers
 	var expired_tiles = []
@@ -860,9 +874,30 @@ func _physics_process(delta):
 					if not move_toward_target_with_path(goal_position):
 						if goal_position == targeted_enemy.position or (goal_building != null and enemy_building == goal_building):
 							find_and_move_to_nearest_adjacent_tile()
+						if not is_moving:
+							try_step_toward(goal_position)
+						if not is_moving:
+							play_idle_animation()
 	else:
 		# No target - IDLE state
 		current_state = AIState.IDLE
+		if not is_moving and patrol_move_timer <= 0.0:
+			# Random patrol step
+			var dirs = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
+			dirs.shuffle()
+			for dir in dirs:
+				var next_tile = position + dir * TILE_SIZE
+				if not is_walkable_for_enemy(next_tile):
+					continue
+				if is_tile_occupied_by_enemy(next_tile) or is_tile_reserved_by_enemy(next_tile):
+					continue
+				target_position = next_tile
+				is_moving = true
+				current_direction = dir
+				last_movement_direction = dir
+				break
+			patrol_move_timer = randf_range(0.8, 2.0)
+		
 		if not is_moving:
 			var dir_name = get_direction_name(current_direction)
 			if animated_sprite != null and animated_sprite.sprite_frames != null:
@@ -878,6 +913,10 @@ func _physics_process(delta):
 			if current_state == AIState.CHASE and targeted_enemy != null and last_chase_goal != Vector2.ZERO:
 				if not move_toward_target_with_path(last_chase_goal):
 					find_and_move_to_nearest_adjacent_tile()
+				if not is_moving:
+					try_step_toward(last_chase_goal)
+			if not is_moving:
+				play_idle_animation()
 			return
 		var direction = (target_position - position).normalized()
 		var distance = position.distance_to(target_position)
@@ -1007,6 +1046,10 @@ func _physics_process(delta):
 						if not move_toward_target_with_path(chase_goal):
 							if chase_goal == targeted_enemy.position or (chase_building != null and chase_enemy_building == chase_building):
 								find_and_move_to_nearest_adjacent_tile()
+							if not is_moving:
+								try_step_toward(chase_goal)
+							if not is_moving:
+								play_idle_animation()
 			else:
 				# Target tile became invalid - snap back to current tile and stop
 				var my_tile = Vector2(floor(position.x / TILE_SIZE), floor(position.y / TILE_SIZE))
@@ -1084,123 +1127,41 @@ func find_and_move_to_nearest_adjacent_tile():
 		Vector2(player_tile.x, player_tile.y - 1)   # Up
 	]
 	
-	# Find the nearest walkable adjacent tile
-	var best_tile = null
-	var best_distance = INF
-	
+	# Find the shortest valid path to any adjacent tile
+	var best_path: Array = []
+	var best_path_len = INF
 	for tile_coords in adjacent_tiles:
-		var tile_center = Vector2(tile_coords.x * TILE_SIZE + TILE_SIZE/2, tile_coords.y * TILE_SIZE + TILE_SIZE/2)
-		
 		# Skip blacklisted tiles
 		if blacklisted_tiles.has(tile_coords):
 			continue
-		
-		# Check feet position (32 pixels below center) - this is what matters visually
-		var feet_pos = tile_center + FEET_OFFSET
-		var feet_tile_x = int(floor(feet_pos.x / TILE_SIZE))
-		var feet_tile_y = int(floor(feet_pos.y / TILE_SIZE))
-		
-		# Check if feet would be on water
-		if world.has_method("get_terrain_type_from_noise"):
-			var feet_terrain = world.get_terrain_type_from_noise(feet_tile_x, feet_tile_y)
-			if feet_terrain == "water":
-				continue
-
+		var tile_center = Vector2(tile_coords.x * TILE_SIZE + TILE_SIZE/2, tile_coords.y * TILE_SIZE + TILE_SIZE/2)
 		if not is_walkable_for_enemy(tile_center):
 			continue
-		
-		# Allow occupied tiles but with a penalty - don't completely block them
-		var is_occupied = is_tile_occupied_by_enemy(tile_center)
-		var is_reserved = is_tile_reserved_by_enemy(tile_center)
-		
-		# Calculate distance from our current position
-		var dist = position.distance_to(tile_center)
-		
-		# Add penalty for occupied tiles so they're chosen last
-		if is_occupied or is_reserved:
-			dist += TILE_SIZE * 10  # Large penalty but not infinite
-		
-		if dist < best_distance:
-			best_distance = dist
-			best_tile = tile_center
-	
-	# If we found a target tile, move toward it
-	if best_tile != null:
-		# If we're already on the best tile, don't move
-		if position.distance_to(best_tile) < TILE_SIZE * 0.1:
-			return
-		
-		# Calculate the next step toward the best tile
-		var direction_to_goal = (best_tile - position).normalized()
-		
-		# Try moving in the 4 cardinal directions, prioritizing the one closest to our goal
-		var directions = [
-			Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT
-		]
-		
-		# Sort directions by how aligned they are with our goal
-		var sorted_dirs = []
-		for dir in directions:
-			var dot = direction_to_goal.dot(dir.normalized())
-			sorted_dirs.append({"dir": dir, "dot": dot})
-		sorted_dirs.sort_custom(func(a, b): return a["dot"] > b["dot"])
-		
-		# Try each direction in order
-		for item in sorted_dirs:
-			var dir = item["dir"]
-			var next_tile_pos = Vector2(
-				my_tile.x + sign(dir.x),
-				my_tile.y + sign(dir.y)
-			)
-			var next_tile_center = Vector2(next_tile_pos.x * TILE_SIZE + TILE_SIZE/2, next_tile_pos.y * TILE_SIZE + TILE_SIZE/2)
-			
-			# Skip blacklisted tiles
-			if blacklisted_tiles.has(next_tile_pos):
-				continue
-			
-			# Check feet position (32 pixels below center) to prevent visual water walking
-			var next_feet_pos = next_tile_center + FEET_OFFSET
-			var next_feet_tile_x = int(floor(next_feet_pos.x / TILE_SIZE))
-			var next_feet_tile_y = int(floor(next_feet_pos.y / TILE_SIZE))
-			if world.has_method("get_terrain_type_from_noise"):
-				var feet_terrain = world.get_terrain_type_from_noise(next_feet_tile_x, next_feet_tile_y)
-				if feet_terrain == "water":
-					continue
-			
-			# Check if occupied by player
-			if player != null and next_tile_center.distance_to(player.position) < TILE_SIZE * 0.6:
-				continue
-			
-			# Allow movement to tiles occupied or reserved by other enemies if no other option
-			# This will be the last resort due to the penalty in best_tile calculation
-			var is_occupied = is_tile_occupied_by_enemy(next_tile_center)
-			var is_reserved = is_tile_reserved_by_enemy(next_tile_center)
-			
-			# Skip if occupied, unless we're desperate (tried all other options)
-			if is_occupied or is_reserved:
-				# Only skip if this isn't our last attempt
-				var remaining_dirs = sorted_dirs.filter(func(d): return sorted_dirs.find(d) > sorted_dirs.find(item))
-				if remaining_dirs.size() > 0:
-					continue
-				# Last option - allow moving here even if occupied
-			
-			# This tile is good - move to it
-			target_position = next_tile_center
-			is_moving = true
-			
-			# Update facing direction using cardinal movement only
-			var dx = sign(dir.x)
-			var dy = sign(dir.y)
-			var movement_dir = Vector2(dx, dy)
-			
-			if movement_dir != last_movement_direction:
-				if dx != 0:
-					current_direction = Vector2(dx, 0)
-				elif dy != 0:
-					current_direction = Vector2(0, dy)
-				last_movement_direction = movement_dir
-			
-			return
+		if is_tile_occupied_by_enemy(tile_center) or is_tile_reserved_by_enemy(tile_center):
+			continue
+		var path = find_path(Vector2(my_tile.x * TILE_SIZE + TILE_SIZE/2, my_tile.y * TILE_SIZE + TILE_SIZE/2), tile_center)
+		if path.size() <= 1:
+			continue
+		if path.size() < best_path_len:
+			best_path = path
+			best_path_len = path.size()
+
+	if best_path.size() <= 1:
+		return
+	var next_step = best_path[1]
+	if not is_walkable_for_enemy(next_step):
+		return
+	if player != null and next_step.distance_to(player.position) < TILE_SIZE * 0.6:
+		return
+	if is_tile_occupied_by_enemy(next_step) or is_tile_reserved_by_enemy(next_step):
+		return
+	var dx = sign(next_step.x - position.x)
+	var dy = sign(next_step.y - position.y)
+	current_direction = calculate_direction(int(dx), int(dy))
+	last_movement_direction = Vector2(dx, dy)
+	target_position = next_step
+	is_moving = true
+	return
 
 func try_surround_reposition() -> bool:
 	"""Try to move to a different adjacent tile around the player while in SURROUND state.
@@ -1223,6 +1184,7 @@ func try_surround_reposition() -> bool:
 	adjacent_tiles.shuffle()
 	
 	# Find a valid adjacent tile that's not our current position
+	var candidates = []
 	for tile_coords in adjacent_tiles:
 		var tile_center = Vector2(tile_coords.x * TILE_SIZE + TILE_SIZE/2, tile_coords.y * TILE_SIZE + TILE_SIZE/2)
 		
@@ -1249,12 +1211,17 @@ func try_surround_reposition() -> bool:
 			continue
 		if is_tile_reserved_by_enemy(tile_center):
 			continue
-
-		if not is_walkable_for_enemy(tile_center):
-			continue
 		
+		candidates.append(tile_center)
+
+	# Prefer the nearest open adjacent tile
+	if candidates.is_empty():
+		return false
+	
+	candidates.sort_custom(func(a, b): return position.distance_to(a) < position.distance_to(b))
+	for tile_center in candidates:
 		# This tile is valid - move to it if we can path there
-		if my_tile.distance_to(tile_coords) <= 1.1:
+		if position.distance_to(tile_center) <= TILE_SIZE * 1.1:
 			# Directly adjacent, just move there
 			target_position = tile_center
 			is_moving = true
@@ -1267,6 +1234,10 @@ func try_surround_reposition() -> bool:
 				current_direction = Vector2(0, sign(dir_to_player.y))
 			
 			return true
+		else:
+			# Path toward the open adjacent tile
+			if move_toward_target_with_path(tile_center):
+				return true
 	
 	return false
 
@@ -1288,8 +1259,20 @@ func is_walkable_for_enemy(target_position: Vector2) -> bool:
 				var door_tile: Vector2i = entry.get("door", Vector2i.ZERO)
 				if target_tile == door_tile:
 					inside_building = null
+	# Prevent entering building interior from roof edge unless through the door
+	if world.has_method("get_building_for_tile") and world.has_method("get_tile_coords"):
+		var target_tile = world.get_tile_coords(target_feet)
+		var entry = world.get_building_for_tile(target_tile)
+		if not entry.is_empty():
+			var target_building = entry.get("building", null)
+			var door_tile: Vector2i = entry.get("door", Vector2i.ZERO)
+			if inside_building == null or inside_building != target_building:
+				if target_tile == door_tile and is_building_door_open(target_building):
+					pass
+				elif world.has_method("is_tile_in_building_interior") and world.is_tile_in_building_interior(target_tile, entry.get("rect", Rect2i())):
+					return false
 	if world.has_method("is_walkable_for_actor"):
-		return world.is_walkable_for_actor(target_feet, from_feet, inside_building, false, true)
+		return world.is_walkable_for_actor(target_feet, from_feet, inside_building, true, true)
 	if world.has_method("is_walkable"):
 		return world.is_walkable(target_feet)
 	return true
@@ -1302,6 +1285,9 @@ func get_current_building() -> Node:
 	var entry = world.get_building_for_tile(tile)
 	if entry.is_empty():
 		return null
+	# Treat roof edge as outside
+	if world.has_method("is_tile_on_building_roof_edge") and world.is_tile_on_building_roof_edge(tile, entry.get("rect", Rect2i())):
+		return null
 	return entry.get("building", null)
 
 func can_detect_player() -> bool:
@@ -1309,9 +1295,7 @@ func can_detect_player() -> bool:
 		return false
 	if not world.has_method("get_building_entry_for_node"):
 		return true
-	var player_building = null
-	if world.has_method("get"):
-		player_building = world.get("player_inside_building")
+	var player_building = get_player_building()
 	if player_building == null:
 		return true
 	var enemy_building = get_current_building()
@@ -1332,10 +1316,24 @@ func can_open_doors() -> bool:
 	return is_humanoid
 
 func get_player_building() -> Node:
-	if world == null:
+	if world == null or player == null:
 		return null
-	if world.has_method("get"):
-		return world.get("player_inside_building")
+	if not world.has_method("get_building_for_tile") or not world.has_method("get_tile_coords"):
+		return null
+	var player_body_tile = world.get_tile_coords(player.position)
+	var player_feet = player.position + FEET_OFFSET
+	var player_feet_tile = world.get_tile_coords(player_feet)
+	var entry = world.get_building_for_tile(player_feet_tile)
+	if entry.is_empty():
+		return null
+	# If player is on the roof edge (top row), treat as outside
+	if world.has_method("is_tile_on_building_roof_edge") and world.is_tile_on_building_roof_edge(player_body_tile, entry.get("rect", Rect2i())):
+		return null
+	var door_tile: Vector2i = entry.get("door", Vector2i.ZERO)
+	if player_feet_tile == door_tile:
+		return entry.get("building", null)
+	if world.has_method("is_tile_in_building_interior") and world.is_tile_in_building_interior(player_feet_tile, entry.get("rect", Rect2i())):
+		return entry.get("building", null)
 	return null
 
 func get_building_entry(building: Node) -> Dictionary:
@@ -1581,6 +1579,39 @@ func get_direction_name(dir: Vector2) -> String:
 		return "right"
 	return "down"
 
+func play_idle_animation():
+	var dir_name = get_direction_name(current_direction)
+	if animated_sprite != null and animated_sprite.sprite_frames != null:
+		var anim_name = "idle_" + dir_name
+		if animated_sprite.animation != anim_name:
+			animated_sprite.play(anim_name)
+
+func try_step_toward(goal_position: Vector2, max_extra_distance: float = TILE_SIZE) -> bool:
+	var dirs = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
+	var best_dir = Vector2.ZERO
+	var best_dist = INF
+	var current_dist = position.distance_to(goal_position)
+	for dir in dirs:
+		var next_tile = position + dir * TILE_SIZE
+		if not is_walkable_for_enemy(next_tile):
+			continue
+		if is_tile_occupied_by_enemy(next_tile) or is_tile_reserved_by_enemy(next_tile):
+			continue
+		if player != null and next_tile.distance_to(player.position) < TILE_SIZE * 0.6:
+			continue
+		var dist = next_tile.distance_to(goal_position)
+		if dist <= current_dist + max_extra_distance and dist < best_dist:
+			best_dist = dist
+			best_dir = dir
+	if best_dir == Vector2.ZERO:
+		return false
+	var target = position + best_dir * TILE_SIZE
+	current_direction = best_dir
+	last_movement_direction = best_dir
+	target_position = target
+	is_moving = true
+	return true
+
 func is_tile_occupied_by_enemy(tile_pos: Vector2) -> bool:
 	"""Check if a tile is occupied by another enemy (not this enemy)"""
 	var parent = get_parent()
@@ -1628,6 +1659,11 @@ func move_toward_target_with_path(goal_position: Vector2) -> bool:
 	var start_center = Vector2(my_tile.x * TILE_SIZE + TILE_SIZE/2, my_tile.y * TILE_SIZE + TILE_SIZE/2)
 	var goal_tile = Vector2(floor(goal_position.x / TILE_SIZE), floor(goal_position.y / TILE_SIZE))
 	var goal_center = Vector2(goal_tile.x * TILE_SIZE + TILE_SIZE/2, goal_tile.y * TILE_SIZE + TILE_SIZE/2)
+	if player != null:
+		var player_tile = Vector2(floor(player.position.x / TILE_SIZE), floor(player.position.y / TILE_SIZE))
+		if goal_tile == player_tile:
+			# Don't path directly onto the player's tile
+			return false
 	var path = find_path(start_center, goal_center)
 	if path.size() <= 1:
 		return false
@@ -1637,6 +1673,8 @@ func move_toward_target_with_path(goal_position: Vector2) -> bool:
 			return false
 	var next_step = path[1]
 	if not is_walkable_for_enemy(next_step):
+		return false
+	if player != null and next_step.distance_to(player.position) < TILE_SIZE * 0.6:
 		return false
 	if is_tile_occupied_by_enemy(next_step) or is_tile_reserved_by_enemy(next_step):
 		return false

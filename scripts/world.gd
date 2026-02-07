@@ -456,7 +456,7 @@ func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 	var goal_tile_y = floor(goal_feet.y / TILE_SIZE)
 	var goal_tile_center = Vector2(goal_tile_x * TILE_SIZE + TILE_SIZE/2, goal_tile_y * TILE_SIZE + TILE_SIZE/2)
 	if is_enemy:
-		if not is_walkable_for_actor(goal_feet, start + feet_offset, inside_building, false, true):
+		if not is_walkable_for_actor(goal_feet, start + feet_offset, inside_building, true, true):
 			return []
 	else:
 		if not is_walkable_for_player(goal_tile_center, start):
@@ -510,7 +510,7 @@ func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 			var tile_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
 			
 			if is_enemy:
-				if not is_walkable_for_actor(feet_position, current + feet_offset, inside_building, false, true):
+				if not is_walkable_for_actor(feet_position, current + feet_offset, inside_building, true, true):
 					continue
 			else:
 				if not is_walkable_for_player(tile_center, current):
