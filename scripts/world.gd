@@ -6,17 +6,27 @@ const TILE_SIZE = 32
 const CHUNK_SIZE = 16  # 16x16 tiles per chunk
 const RENDER_DISTANCE = 2  # How many chunks to render around player
 const TOWN_RADIUS_TILES = 30
-const TOWN_CENTER = Vector2(TILE_SIZE / 2, TILE_SIZE / 2)
+const TOWN_SPACING_TILES = 600
+const TOWN_CELL_RADIUS = 2
+const TOWN_OFFSET_TILES = 160
+const TOWN_CELL_CHANCE = 0.45
+const TOWN_ROAD_WIDTH = 2
+const TOWN_CONNECT_COUNT = 2
 
 var generated_chunks = {}  # Dictionary to track which chunks have been generated
 var terrain_data = {}  # Dictionary to store terrain type at each tile position
 var spawn_points = []  # Array of spawn point positions (world positions)
 var spawn_points_per_chunk = 2  # Number of spawn points to create per chunk
 var noise: FastNoiseLite
+var world_seed = 0
 var last_drawn_count = 0
 var time_passed = 0.0  # For water animation
 var building_zones: Array = []
 var player_inside_building: Node = null
+var town_centers: Array = []
+var town_grid = {}
+var road_connections = {}
+var forced_terrain = {}
 
 # Water animation parameters
 var water_wave_speed = 3.0  # Speed of the wave
@@ -36,7 +46,8 @@ var terrain_colors = {
 func _ready():
 	# Initialize noise for procedural generation
 	noise = FastNoiseLite.new()
-	noise.seed = randi()
+	world_seed = randi()
+	noise.seed = world_seed
 	noise.noise_type = FastNoiseLite.TYPE_PERLIN
 	noise.frequency = 0.05
 	
@@ -70,6 +81,10 @@ func _ready():
 	else:
 		print("Warning: Failed to load water texture, using color fallback")
 	
+	# Generate initial towns and roads around origin
+	ensure_towns_near(Vector2.ZERO)
+	connect_new_towns(town_centers)
+
 	# Generate initial terrain around origin
 	update_world(Vector2.ZERO)
 
@@ -82,6 +97,7 @@ func _process(_delta):
 		queue_redraw()
 
 func update_world(player_position: Vector2):
+	ensure_towns_near(player_position)
 	# Calculate which chunk the player is in
 	var player_chunk = Vector2i(
 		floor(player_position.x / (CHUNK_SIZE * TILE_SIZE)),
@@ -107,15 +123,8 @@ func generate_chunk(chunk_pos: Vector2i):
 			var tile_y = start_y + y
 			
 			# Get noise value for this position
-			var noise_val = noise.get_noise_2d(tile_x, tile_y)
-			
-			# Determine terrain type
-			var terrain_type = "grass"  # Default
-			
-			if noise_val < -0.3:
-				terrain_type = "water"
-			elif noise_val > 0.4:
-				terrain_type = "dirt"
+			# Determine terrain type with overrides
+			var terrain_type = get_terrain_type_from_noise(tile_x, tile_y)
 			
 			# Store terrain type for collision detection
 			var tile_world_pos = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
@@ -128,6 +137,8 @@ func generate_chunk(chunk_pos: Vector2i):
 			var tile_y = start_y + y
 			var tile_world_pos = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
 			
+			if get_forced_terrain(Vector2i(tile_x, tile_y)) != "":
+				continue
 			if terrain_data[tile_world_pos] in ["grass", "dirt"]:
 				# Check if any adjacent tile is water
 				var is_next_to_water = false
@@ -137,9 +148,8 @@ func generate_chunk(chunk_pos: Vector2i):
 							continue
 						var neighbor_x = tile_x + dx
 						var neighbor_y = tile_y + dy
-						# Check noise directly for neighbors (including those outside current chunk)
-						var neighbor_noise = noise.get_noise_2d(neighbor_x, neighbor_y)
-						if neighbor_noise < -0.3:
+						# Check base terrain directly for neighbors (including those outside current chunk)
+						if get_base_terrain_type(neighbor_x, neighbor_y) == "water":
 							is_next_to_water = true
 							break
 					if is_next_to_water:
@@ -154,16 +164,20 @@ func generate_chunk(chunk_pos: Vector2i):
 	# Trigger redraw when new terrain is generated
 	queue_redraw()
 
-func get_terrain_type_from_noise(tile_x: int, tile_y: int) -> String:
+func get_base_terrain_type(tile_x: int, tile_y: int) -> String:
 	"""Get terrain type directly from noise value for a tile coordinate"""
 	var noise_val = noise.get_noise_2d(tile_x, tile_y)
-	
 	if noise_val < -0.3:
 		return "water"
-	elif noise_val > 0.4:
+	if noise_val > 0.4:
 		return "dirt"
-	else:
-		return "grass"
+	return "grass"
+
+func get_terrain_type_from_noise(tile_x: int, tile_y: int) -> String:
+	var forced = get_forced_terrain(Vector2i(tile_x, tile_y))
+	if forced != "":
+		return forced
+	return get_base_terrain_type(tile_x, tile_y)
 
 func generate_spawn_points_for_chunk(chunk_pos: Vector2i):
 	"""Generate spawn points within a chunk on walkable terrain"""
@@ -214,13 +228,212 @@ func get_available_spawn_points(player_pos: Vector2) -> Array:
 	return available
 
 func get_town_center() -> Vector2:
-	return TOWN_CENTER
+	if town_centers.is_empty():
+		return Vector2(TILE_SIZE / 2, TILE_SIZE / 2)
+	return town_centers[0]
+
+func get_town_centers() -> Array:
+	return town_centers
 
 func get_town_radius_world() -> float:
 	return TOWN_RADIUS_TILES * TILE_SIZE
 
 func is_point_in_town(world_position: Vector2) -> bool:
-	return world_position.distance_to(TOWN_CENTER) <= get_town_radius_world()
+	for center in town_centers:
+		if world_position.distance_to(center) <= get_town_radius_world():
+			return true
+	return false
+
+func get_forced_terrain(tile: Vector2i) -> String:
+	return forced_terrain.get(tile, "")
+
+func set_forced_terrain(tile: Vector2i, terrain_type: String):
+	forced_terrain[tile] = terrain_type
+	var world_pos = tile_to_world_center(tile)
+	if terrain_data.has(world_pos):
+		terrain_data[world_pos] = terrain_type
+
+func tile_to_world_center(tile: Vector2i) -> Vector2:
+	return Vector2(tile.x * TILE_SIZE + TILE_SIZE / 2, tile.y * TILE_SIZE + TILE_SIZE / 2)
+
+func world_to_town_cell(world_position: Vector2) -> Vector2i:
+	var tile = get_tile_coords(world_position)
+	return Vector2i(int(floor(float(tile.x) / float(TOWN_SPACING_TILES))), int(floor(float(tile.y) / float(TOWN_SPACING_TILES))))
+
+func hash_cell(cell: Vector2i, salt: int) -> int:
+	var h = int(cell.x * 73856093) ^ int(cell.y * 19349663) ^ int(world_seed + salt)
+	return abs(h)
+
+func rand01(cell: Vector2i, salt: int) -> float:
+	return float(hash_cell(cell, salt) % 10000) / 10000.0
+
+func should_spawn_town(cell: Vector2i) -> bool:
+	return rand01(cell, 11) < TOWN_CELL_CHANCE
+
+func find_nearest_land_tile(start_tile: Vector2i, max_radius: int) -> Vector2i:
+	for r in range(0, max_radius + 1):
+		for dx in range(-r, r + 1):
+			for dy in range(-r, r + 1):
+				if abs(dx) != r and abs(dy) != r:
+					continue
+				var tile = start_tile + Vector2i(dx, dy)
+				if get_base_terrain_type(tile.x, tile.y) != "water":
+					return tile
+	return start_tile
+
+func get_town_center_for_cell(cell: Vector2i) -> Vector2:
+	var base_tile = Vector2i(cell.x * TOWN_SPACING_TILES, cell.y * TOWN_SPACING_TILES)
+	var offset_x = int(round((rand01(cell, 21) * 2.0 - 1.0) * TOWN_OFFSET_TILES))
+	var offset_y = int(round((rand01(cell, 31) * 2.0 - 1.0) * TOWN_OFFSET_TILES))
+	var start_tile = base_tile + Vector2i(offset_x, offset_y)
+	var land_tile = find_nearest_land_tile(start_tile, 30)
+	return tile_to_world_center(land_tile)
+
+func apply_town_clearing(town_center: Vector2):
+	var center_tile = get_tile_coords(town_center)
+	for dx in range(-TOWN_RADIUS_TILES, TOWN_RADIUS_TILES + 1):
+		for dy in range(-TOWN_RADIUS_TILES, TOWN_RADIUS_TILES + 1):
+			if Vector2(dx, dy).length() > TOWN_RADIUS_TILES:
+				continue
+			var tile = center_tile + Vector2i(dx, dy)
+			if get_base_terrain_type(tile.x, tile.y) == "water":
+				continue
+			set_forced_terrain(tile, "grass")
+
+func ensure_towns_near(player_position: Vector2):
+	var cell = world_to_town_cell(player_position)
+	var new_centers: Array = []
+	for cx in range(cell.x - TOWN_CELL_RADIUS, cell.x + TOWN_CELL_RADIUS + 1):
+		for cy in range(cell.y - TOWN_CELL_RADIUS, cell.y + TOWN_CELL_RADIUS + 1):
+			var town_cell = Vector2i(cx, cy)
+			if town_grid.has(town_cell):
+				continue
+			if not should_spawn_town(town_cell):
+				continue
+			var center = get_town_center_for_cell(town_cell)
+			town_grid[town_cell] = center
+			town_centers.append(center)
+			new_centers.append(center)
+			apply_town_clearing(center)
+	if not new_centers.is_empty():
+		connect_new_towns(new_centers)
+
+func get_nearest_towns(center: Vector2, count: int) -> Array:
+	var candidates: Array = []
+	for other in town_centers:
+		if other == center:
+			continue
+		candidates.append({"pos": other, "dist": center.distance_to(other)})
+	candidates.sort_custom(func(a, b): return a["dist"] < b["dist"])
+	var result: Array = []
+	for i in range(min(count, candidates.size())):
+		result.append(candidates[i]["pos"])
+	return result
+
+func road_key(a: Vector2, b: Vector2) -> String:
+	var a_tile = get_tile_coords(a)
+	var b_tile = get_tile_coords(b)
+	if a_tile.x > b_tile.x or (a_tile.x == b_tile.x and a_tile.y > b_tile.y):
+		var tmp = a_tile
+		a_tile = b_tile
+		b_tile = tmp
+	return "%s,%s|%s,%s" % [a_tile.x, a_tile.y, b_tile.x, b_tile.y]
+
+func connect_new_towns(new_centers: Array):
+	for center in new_centers:
+		var neighbors = get_nearest_towns(center, TOWN_CONNECT_COUNT)
+		for neighbor in neighbors:
+			var key = road_key(center, neighbor)
+			if road_connections.has(key):
+				continue
+			create_road(center, neighbor)
+			road_connections[key] = true
+
+func is_water_tile(tile: Vector2i) -> bool:
+	return get_base_terrain_type(tile.x, tile.y) == "water"
+
+func set_road_brush(tile: Vector2i):
+	for dx in range(-TOWN_ROAD_WIDTH, TOWN_ROAD_WIDTH + 1):
+		for dy in range(-TOWN_ROAD_WIDTH, TOWN_ROAD_WIDTH + 1):
+			if Vector2(dx, dy).length() > TOWN_ROAD_WIDTH:
+				continue
+			var t = tile + Vector2i(dx, dy)
+			set_forced_terrain(t, "dirt")
+
+func create_road(start_world: Vector2, end_world: Vector2):
+	var start = get_tile_coords(start_world)
+	var goal = get_tile_coords(end_world)
+	var rng = RandomNumberGenerator.new()
+	rng.seed = hash_cell(start, 77) ^ hash_cell(goal, 91)
+	var current = start
+	var last_step = Vector2i.ZERO
+	var straight_len = 0
+	var steps = 0
+	var max_steps = int(start.distance_to(goal) * 2.5) + 200
+	while current != goal and steps < max_steps:
+		set_road_brush(current)
+		var dir = Vector2i(sign(goal.x - current.x), sign(goal.y - current.y))
+		var toward_steps: Array = []
+		var perpendicular_steps: Array = []
+		if dir.x != 0:
+			toward_steps.append(Vector2i(dir.x, 0))
+			perpendicular_steps.append(Vector2i(0, 1))
+			perpendicular_steps.append(Vector2i(0, -1))
+		if dir.y != 0:
+			toward_steps.append(Vector2i(0, dir.y))
+			perpendicular_steps.append(Vector2i(1, 0))
+			perpendicular_steps.append(Vector2i(-1, 0))
+		var candidates: Array = []
+		if last_step != Vector2i.ZERO and rng.randf() < (0.55 + min(straight_len, 6) * 0.03):
+			candidates.append(last_step)
+			candidates.append(last_step)
+		for step in toward_steps:
+			candidates.append(step)
+			candidates.append(step)
+		if rng.randf() < 0.45:
+			for step in perpendicular_steps:
+				candidates.append(step)
+		candidates.shuffle()
+		var chosen = false
+		var blocked_by_water = []
+		for cand in candidates:
+			var next = current + cand
+			if is_water_tile(next):
+				blocked_by_water.append(cand)
+				if rng.randf() < 0.75:
+					continue
+			current = next
+			if cand == last_step:
+				straight_len += 1
+			else:
+				straight_len = 1
+			last_step = cand
+			chosen = true
+			break
+		if not chosen:
+			var fallback = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+			fallback.shuffle()
+			for cand in fallback:
+				var next = current + cand
+				if is_water_tile(next):
+					blocked_by_water.append(cand)
+					if rng.randf() < 0.75:
+						continue
+				current = next
+				last_step = cand
+				straight_len = 1
+				chosen = true
+				break
+		if not chosen and not blocked_by_water.is_empty():
+			var cand = blocked_by_water[rng.randi_range(0, blocked_by_water.size() - 1)]
+			current = current + cand
+			last_step = cand
+			straight_len = 1
+			chosen = true
+		if not chosen:
+			break
+		steps += 1
+	set_road_brush(goal)
 
 func _draw():
 	# Draw all terrain tiles with textures or color fallback

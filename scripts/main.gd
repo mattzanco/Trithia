@@ -7,14 +7,18 @@ const ORC_SCENE = preload("res://scenes/enemies/orc.tscn")
 const TROLL_SCENE = preload("res://scenes/enemies/troll.tscn")
 const BUILDING_SCENE = preload("res://scenes/town/building.tscn")
 
+var ysort_container: Node2D = null
+
 func _ready():
 	print("Trithia game started!")
 	print("Main node ready, about to wait for process frame")
+
+	setup_y_sort()
 	
 	await get_tree().process_frame  # Wait one frame for player to be ready
 	print("About to call spawn_starting_orcs()")
 	
-	setup_town()
+	setup_towns()
 	spawn_starting_orcs()
 	print("spawn_starting_orcs() completed")
 	
@@ -27,7 +31,7 @@ func _ready():
 
 func spawn_starting_orcs():
 	# Spawn 10 enemies at random spawn points around the world
-	var player = $Player
+	var player = get_player_node()
 	var world = get_world_node()
 	if world == null or not world.has_method("get_available_spawn_points"):
 		return
@@ -48,7 +52,7 @@ func spawn_starting_orcs():
 
 func _on_spawn_timer_timeout():
 	"""Periodically spawn orcs at available spawn points"""
-	var player = get_node_or_null("Player")
+	var player = get_player_node()
 	if player == null:
 		return  # Player is dead, stop spawning
 	
@@ -73,25 +77,31 @@ func spawn_enemy_at_spawn_point(spawn_pos: Vector2):
 	var scene = ORC_SCENE if randi_range(0, 99) < 75 else TROLL_SCENE
 	var enemy = scene.instantiate()
 	enemy.position = spawn_pos
-	add_child(enemy)
+	if ysort_container:
+		ysort_container.add_child(enemy)
+	else:
+		add_child(enemy)
 	print("[SPAWN_FUNC] Enemy spawned at spawn point: ", spawn_pos)
 
-func setup_town():
-	var player = get_node_or_null("Player")
+func setup_towns():
+	var player = get_player_node()
 	var world = get_world_node()
-	if player == null or world == null or not world.has_method("get_town_center"):
+	if player == null or world == null or not world.has_method("get_town_centers"):
 		return
-	var town_center = world.get_town_center()
-	var spawn_pos = find_grass_spawn(world, town_center, world.get_town_radius_world())
+	var town_centers = world.get_town_centers()
+	if town_centers.is_empty():
+		return
+	var start_center = town_centers[0]
+	var spawn_pos = find_grass_spawn(world, start_center, world.get_town_radius_world())
 	player.position = spawn_pos
 	if world.has_method("update_world"):
 		world.update_world(player.position)
-	spawn_town_buildings(world)
+	for town_center in town_centers:
+		spawn_town_buildings(world, town_center)
 
-func spawn_town_buildings(world: Node):
-	if world == null or not world.has_method("get_town_center"):
+func spawn_town_buildings(world: Node, town_center: Vector2):
+	if world == null or not world.has_method("get_town_radius_world"):
 		return
-	var town_center = world.get_town_center()
 	var town_radius = world.get_town_radius_world()
 	var building_rects: Array = []
 	var attempts = 0
@@ -118,7 +128,10 @@ func spawn_town_buildings(world: Node):
 		var building = BUILDING_SCENE.instantiate()
 		building.position = Vector2(rect.position.x * TILE_SIZE, rect.position.y * TILE_SIZE)
 		building.set("size_tiles", size_tiles)
-		add_child(building)
+		if ysort_container:
+			ysort_container.add_child(building)
+		else:
+			add_child(building)
 		placed += 1
 
 func get_random_town_position(world: Node, town_center: Vector2, town_radius: float) -> Vector2:
@@ -197,12 +210,14 @@ func tile_to_world_center(tile: Vector2i) -> Vector2:
 	return Vector2(tile.x * TILE_SIZE + TILE_SIZE / 2, tile.y * TILE_SIZE + TILE_SIZE / 2)
 
 func _process(_delta):
-	# Update depth sorting based on Y position
+	# Y-sorting handles draw order when enabled.
+	if ysort_container and ysort_container.y_sort_enabled:
+		return
 	update_depth_sorting()
 
 func update_depth_sorting():
 	# Get references to player
-	var player = get_node_or_null("Player")
+	var player = get_player_node()
 	
 	if player:
 		if get_child_count() < 2:
@@ -229,6 +244,25 @@ func update_depth_sorting():
 					move_child(player, back_index)
 					move_child(enemy, front_index)
 
+func setup_y_sort():
+	if ysort_container:
+		return
+	ysort_container = Node2D.new()
+	ysort_container.name = "YSort"
+	ysort_container.y_sort_enabled = true
+	add_child(ysort_container)
+	move_child(ysort_container, 1)
+	var player = get_node_or_null("Player")
+	if player:
+		player.reparent(ysort_container, true)
+
+func get_player_node() -> Node:
+	if ysort_container:
+		var player = ysort_container.get_node_or_null("Player")
+		if player:
+			return player
+	return get_tree().get_root().find_child("Player", true, false)
+
 
 func get_world_node() -> Node:
 	var direct = get_node_or_null("World")
@@ -243,7 +277,7 @@ func get_world_node() -> Node:
 
 func show_game_over():
 	# Disable the camera so it stops following the player
-	var player = get_node_or_null("Player")
+	var player = get_player_node()
 	if player:
 		var camera = player.get_node_or_null("Camera2D")
 		if camera:

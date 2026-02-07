@@ -1532,9 +1532,25 @@ func try_open_building_door(building: Node) -> bool:
 func move_out_of_town():
 	if world == null:
 		return
-	if not world.has_method("get_town_center") or not world.has_method("get_town_radius_world"):
+	if not world.has_method("get_town_radius_world"):
 		return
-	var town_center = world.get_town_center()
+	var town_center = Vector2.ZERO
+	if world.has_method("get_town_centers"):
+		var centers = world.get_town_centers()
+		if centers.is_empty():
+			return
+		var nearest = centers[0]
+		var best_dist = position.distance_to(nearest)
+		for center in centers:
+			var dist = position.distance_to(center)
+			if dist < best_dist:
+				best_dist = dist
+				nearest = center
+		town_center = nearest
+	elif world.has_method("get_town_center"):
+		town_center = world.get_town_center()
+	else:
+		return
 	var radius = world.get_town_radius_world()
 	var base_dir = (position - town_center).normalized()
 	if base_dir == Vector2.ZERO:

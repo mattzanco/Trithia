@@ -1406,8 +1406,7 @@ func move_to_position(target: Vector2):
 	var parent = get_parent()
 	if not parent:
 		return
-	
-	var world = parent.get_node_or_null("World")
+	var world = get_world_node()
 	
 	# Check if clicked tile is walkable
 	if world and world.has_method("is_walkable"):
@@ -1455,11 +1454,7 @@ func move_to_position(target: Vector2):
 func find_path(start: Vector2, goal: Vector2) -> Array:
 	"""Call the world's shared pathfinding function.
 	This ensures consistent pathfinding for both player and orcs."""
-	var parent = get_parent()
-	if not parent:
-		return []
-	
-	var world = parent.get_node_or_null("World")
+	var world = get_world_node()
 	if not world:
 		return []
 	
@@ -1495,7 +1490,7 @@ func process_next_path_step():
 			path_queue.clear()
 			return
 		
-		var world = parent.get_node_or_null("World")
+		var world = get_world_node()
 		if world and world.has_method("is_walkable"):
 			var feet_offset = Vector2(0, TILE_SIZE / 2)
 			var feet_position = next_tile + feet_offset
@@ -1631,7 +1626,7 @@ func _physics_process(delta):
 				var next_position = position + tile_offset * TILE_SIZE
 				
 				# Check if the next tile is walkable (check the tile below for feet)
-				var world = get_parent().get_node_or_null("World")
+				var world = get_world_node()
 				var feet_offset = Vector2(0, TILE_SIZE / 2)
 				var can_move = false
 				
@@ -1656,7 +1651,7 @@ func _physics_process(delta):
 					# Only update facing direction when movement is confirmed
 					target_position = next_position
 					is_moving = true
-	var world = get_parent().get_node_or_null("World")
+	var world = get_world_node()
 	if world and world.has_method("update_world"):
 		world.update_world(global_position)
 	
@@ -1740,7 +1735,7 @@ func die():
 	
 	# Add the dead body to the world node so it renders with terrain
 	if parent:
-		var world = parent.get_node_or_null("World")
+		var world = get_world_node()
 		if world:
 			world.add_child(dead_body)
 		else:

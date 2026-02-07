@@ -121,13 +121,10 @@ func update_layers():
 	roof_layer.set("is_player_inside", is_player_inside)
 	base_layer.queue_redraw()
 	roof_layer.queue_redraw()
-	var size_px = Vector2(size_tiles.x * TILE_SIZE, size_tiles.y * TILE_SIZE)
-	var base_z = clampi(int((global_position.y + size_px.y - TILE_SIZE) / 10) + 1000, 0, 10000)
-	var roof_z = clampi(int(global_position.y / 10) + 1000, 0, 10000)
-	base_layer.z_as_relative = false
-	roof_layer.z_as_relative = false
-	base_layer.z_index = base_z
-	roof_layer.z_index = roof_z
+	base_layer.z_as_relative = true
+	roof_layer.z_as_relative = true
+	base_layer.z_index = 0
+	roof_layer.z_index = 1
 
 func get_tile_coords(world_position: Vector2) -> Vector2i:
 	return Vector2i(int(floor(world_position.x / TILE_SIZE)), int(floor(world_position.y / TILE_SIZE)))
