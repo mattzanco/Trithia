@@ -1778,8 +1778,9 @@ func perform_attack():
 func die():
 	# Create a dead body visual at the enemy's position
 	var dead_body = Area2D.new()
-	dead_body.position = position + Vector2(0, TILE_SIZE/2)  # Position at the feet tile
-	dead_body.z_index = 0  # On the ground, above terrain
+	dead_body.position = position + Vector2(0, TILE_SIZE / 2)
+	dead_body.z_index = 0
+	dead_body.z_as_relative = true
 	
 	# Load and attach the dead body script
 	var dead_body_script = load("res://scripts/dead_body.gd")
@@ -1789,15 +1790,19 @@ func die():
 	elif enemy_name == "Troll":
 		dead_body.set_meta("is_troll_body", true)
 	
-	# Add the dead body to the world node so it renders with terrain
+	# Add the dead body to the corpse layer so it renders above the world.
 	var parent = get_parent()
 	if parent:
-		var world = parent.get_node_or_null("World")
-		if world:
-			world.add_child(dead_body)
+		var corpse_layer = get_tree().get_root().find_child("CorpseLayer", true, false)
+		if corpse_layer:
+			corpse_layer.add_child(dead_body)
 		else:
-			# Fallback to parent if world not found
-			parent.add_child(dead_body)
+			var world = parent.get_node_or_null("World")
+			if world:
+				world.add_child(dead_body)
+			else:
+				# Fallback to parent if world not found
+				parent.add_child(dead_body)
 	else:
 		# Avoid leaking if no parent is available
 		dead_body.queue_free()

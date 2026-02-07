@@ -1,35 +1,98 @@
-[gd_scene load_steps=3 format=3 uid="uid://b5vqy8r3nxc8q"]
+[gd_scene load_steps=4 format=3 uid="uid://b5vqy8r3nxc8q"]
 
 [ext_resource type="Script" path="res://scripts/mini_map.gd" id="1_x8v7m"]
 [ext_resource type="PackedScene" path="res://scenes/ui/equipment_menu.tscn" id="2_equipment"]
 
+[sub_resource type="StyleBoxFlat" id="1_minimap_panel"]
+bg_color = Color(0.08, 0.08, 0.1, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_width_left = 0
+border_width_top = 0
+border_width_right = 0
+border_width_bottom = 0
+border_color = Color(0.35, 0.3, 0.25, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+
+[sub_resource type="StyleBoxFlat" id="2_side_panel"]
+bg_color = Color(0.08, 0.08, 0.1, 1.0)
+border_width_left = 0
+border_width_top = 0
+border_width_right = 0
+border_width_bottom = 0
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
+shadow_size = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
+shadow_color = Color(0, 0, 0, 0.6)
+shadow_size = 0
+
 [node name="MiniMapLayer" type="CanvasLayer"]
 layer = 100
 
-[node name="MiniMap" type="Control" parent="."]
-custom_minimum_size = Vector2(150, 150)
+[node name="LeftPanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 0.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 140.0
+offset_bottom = 0.0
+theme_override_styles/panel = SubResource("2_side_panel")
+
+[node name="RightPanel" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(140, 0)
 layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
 anchor_top = 0.0
 anchor_right = 1.0
-anchor_bottom = 0.0
-offset_left = -160.0
-offset_top = 10.0
-offset_right = -10.0
-offset_bottom = 160.0
+anchor_bottom = 1.0
+offset_left = -140.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
 grow_horizontal = 0
+theme_override_styles/panel = SubResource("2_side_panel")
+
+[node name="RightPanelContent" type="VBoxContainer" parent="RightPanel"]
+anchors_preset = 15
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+separation = 0
+alignment = 0
+
+[node name="MiniMapPanel" type="PanelContainer" parent="RightPanel/RightPanelContent"]
+custom_minimum_size = Vector2(140, 150)
+size_flags_vertical = 0
+theme_override_styles/panel = SubResource("1_minimap_panel")
+
+[node name="MiniMap" type="Control" parent="RightPanel/RightPanelContent/MiniMapPanel"]
+anchors_preset = 15
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
 script = ExtResource("1_x8v7m")
 
-[node name="EquipmentMenu" parent="." instance=ExtResource("2_equipment")]
-layout_mode = 1
-anchors_preset = 1
-anchor_left = 1.0
-anchor_top = 0.0
-anchor_right = 1.0
-anchor_bottom = 0.0
-offset_left = -160.0
-offset_top = 170.0
-offset_right = -10.0
-offset_bottom = 350.0
-grow_horizontal = 0
+[node name="EquipmentMenu" parent="RightPanel/RightPanelContent" instance=ExtResource("2_equipment")]
+custom_minimum_size = Vector2(140, 190)

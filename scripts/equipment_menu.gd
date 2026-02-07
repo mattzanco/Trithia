@@ -104,7 +104,7 @@ func _ready():
 	armor_slot = $Panel/Margin/Center/VBox/SlotGrid/ArmorSlot
 	legs_slot = $Panel/Margin/Center/VBox/SlotGrid/LegsSlot
 	boots_slot = $Panel/Margin/Center/VBox/SlotGrid/BootsSlot
-	equipment_title = $Panel/Margin/Center/VBox/Title
+	equipment_title = get_node_or_null("Panel/Margin/Center/VBox/Title")
 	head_slot_style = head_slot.get_theme_stylebox("panel")
 	head_slot_highlight = create_highlight_style()
 	ensure_helmet_icon()
@@ -323,7 +323,7 @@ func _input(event):
 				var body_title = get_body_container_at_title()
 				if body_title:
 					dragging_body_window = body_title
-					window_drag_offset = body_title.position - event.global_position
+					window_drag_offset = body_title.global_position - event.global_position
 					get_viewport().set_input_as_handled()
 			# Check for bag resize handle
 			elif is_mouse_on_bag_resize_handle():
@@ -451,7 +451,7 @@ func _input(event):
 			resizing_body_window.size = new_size
 			get_viewport().set_input_as_handled()
 		elif dragging_body_window:
-			dragging_body_window.position = event.global_position + window_drag_offset
+			dragging_body_window.global_position = event.global_position + window_drag_offset
 			get_viewport().set_input_as_handled()
 		elif resizing_bag_window:
 			var new_size = event.global_position + window_drag_offset
@@ -2259,7 +2259,7 @@ func create_bag_container():
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 4)
 	grid.add_theme_constant_override("v_separation", 4)
-	grid.custom_minimum_size = Vector2(160, 150)
+	grid.custom_minimum_size = Vector2(140, 150)
 	vbox.add_child(grid)
 	bag_grid = grid
 	
@@ -2287,7 +2287,7 @@ func create_bag_container():
 	add_child(bag_container)
 	bag_container.visible = false
 	bag_container.position = Vector2(0, 200)
-	bag_container.custom_minimum_size = Vector2(180, 180)
+	bag_container.custom_minimum_size = Vector2(156, 180)
 
 func toggle_bag_container():
 	if bag_container:
@@ -2377,10 +2377,12 @@ func get_body_container_at_resize_handle() -> Control:
 	return null
 
 func get_body_container_parents() -> Array:
-	var parent = get_parent()
-	if parent is CanvasLayer:
-		return parent.get_children()
-	return get_children()
+	var current: Node = self
+	while current and not (current is CanvasLayer):
+		current = current.get_parent()
+	if current:
+		return current.get_children()
+	return get_tree().get_root().get_children()
 
 func get_body_title_bar(window: Control) -> Control:
 	var bars = window.find_children("*", "HBoxContainer", true, false)

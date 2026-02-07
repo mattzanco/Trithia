@@ -239,29 +239,11 @@ func draw_character_front(img: Image, skin: Color, hair: Color, leather: Color, 
 				img.set_pixel(x, y, skin)
 			img.set_pixel(4, y, outline)
 	
-	# Right arm (holding sword)
+	# Right arm
 	for y in range(max(30, 30 + right_arm_offset), min(40, 40 + right_arm_offset)):
 		if y >= 0 and y < 64:
 			for x in range(24, 28):
 				img.set_pixel(x, y, skin)
-			img.set_pixel(27, y, outline)
-	
-	# Sword in right hand
-	var sword_offset = right_arm_offset
-	# Handle
-	for y in range(max(38, 38 + sword_offset), min(45, 45 + sword_offset)):
-		if y >= 0 and y < 64:
-			img.set_pixel(27, y, handle)
-	# Blade
-	for y in range(max(20, 20 + sword_offset), min(38, 38 + sword_offset)):
-		if y >= 0 and y < 64:
-			img.set_pixel(27, y, metal)
-			if y < 37:
-				img.set_pixel(28, y, metal)
-	# Blade outline
-	for y in range(max(20, 20 + sword_offset), min(38, 38 + sword_offset)):
-		if y >= 0 and y < 64:
-			img.set_pixel(26, y, outline)
 			img.set_pixel(27, y, outline)
 	
 	# Pants (rows 41-50)
@@ -408,22 +390,6 @@ func draw_character_back(img: Image, skin: Color, hair: Color, leather: Color, l
 			img.set_pixel(x, y, pants)
 		img.set_pixel(8, y, outline)  # 4 → 8
 		img.set_pixel(23, y, outline)  # Right outline
-	
-	# Sword tip behind right shoulder (animated)
-	var sword_tip_offset = 0
-	if walk_frame == 1:
-		sword_tip_offset = -2  # Sword tip moves up
-	elif walk_frame == 3:
-		sword_tip_offset = 2  # Sword tip moves down
-	
-	# Sword blade tip (rows 18-26, behind shoulder)
-	for y in range(max(0, 18 + sword_tip_offset), min(64, 27 + sword_tip_offset)):
-		if y >= 0 and y < 64:
-			img.set_pixel(24, y, metal)  # Behind right shoulder
-	# Blade outline
-	for y in range(max(0, 18 + sword_tip_offset), min(64, 27 + sword_tip_offset)):
-		if y >= 0 and y < 64:
-			img.set_pixel(25, y, outline)
 	
 	# Legs with animation
 	var left_leg_offset = 0
@@ -1080,59 +1046,6 @@ func draw_character_side(img: Image, skin: Color, hair: Color, leather: Color, l
 			if outline_x >= 0 and outline_x < 32:
 				img.set_pixel(outline_x, y, outline)
 	
-	# Sword (held in front arm with up/down movement)
-	var sword_x = base_x + 14 * dir
-	var sword_offset = 0
-	if walk_frame == 1:
-		sword_offset = -5  # Sword moves up more visibly
-	elif walk_frame == 3:
-		sword_offset = 5  # Sword moves down more visibly
-	
-	# Handle
-	for y in range(max(44, 44 + sword_offset), min(50, 50 + sword_offset)):
-		if y >= 0 and y < 64 and sword_x >= 0 and sword_x < 32:
-			img.set_pixel(sword_x, y, handle)
-	
-	# Blade (pointing up-forward)
-	for y in range(max(26, 26 + sword_offset), min(44, 44 + sword_offset)):
-		if y >= 0 and y < 64 and sword_x >= 0 and sword_x < 32:
-			img.set_pixel(sword_x, y, metal)
-			var blade_x2 = sword_x + dir
-			if blade_x2 >= 0 and blade_x2 < 32 and y < 43:
-				img.set_pixel(blade_x2, y, metal)
-	
-	# Blade outlines (move with sword)
-	var blade_outline_x = sword_x - dir
-	for y in range(max(26, 26 + sword_offset), min(44, 44 + sword_offset)):
-		if y >= 0 and y < 64 and blade_outline_x >= 0 and blade_outline_x < 32:
-			img.set_pixel(blade_outline_x, y, outline)
-	
-	# Sword tip (moves with sword)
-	var tip_y = max(0, 24 + sword_offset)
-	if tip_y >= 0 and tip_y < 64:
-		if sword_x >= 0 and sword_x < 32:
-			img.set_pixel(sword_x, tip_y, outline)
-		var tip_x2 = sword_x + dir
-		if tip_x2 >= 0 and tip_x2 < 32:
-			img.set_pixel(tip_x2, tip_y, outline)
-		# Left outline at tip
-		var tip_outline_x = sword_x - dir
-		if tip_outline_x >= 0 and tip_outline_x < 32:
-			img.set_pixel(tip_outline_x, tip_y, outline)
-	
-	# Fill gap between tip and blade
-	var gap_y = max(0, 25 + sword_offset)
-	if gap_y >= 0 and gap_y < 64:
-		if sword_x >= 0 and sword_x < 32:
-			img.set_pixel(sword_x, gap_y, metal)
-		var gap_x2 = sword_x + dir
-		if gap_x2 >= 0 and gap_x2 < 32:
-			img.set_pixel(gap_x2, gap_y, metal)
-		# Outline at gap row
-		var gap_outline_x = sword_x - dir
-		if gap_outline_x >= 0 and gap_outline_x < 32:
-			img.set_pixel(gap_outline_x, gap_y, outline)
-	
 	# Pants - rows 48-59
 	for y in range(48, 60):
 		for dx in range(14):  # Match front width (9-22 = 13 pixels)
@@ -1726,8 +1639,9 @@ func die():
 		camera.current = true
 	
 	var dead_body = Area2D.new()
-	dead_body.position = position + Vector2(0, TILE_SIZE/2)  # Position at the feet tile
-	dead_body.z_index = 0  # On the ground, above terrain
+	dead_body.position = position + Vector2(0, TILE_SIZE / 2)
+	dead_body.z_index = 0
+	dead_body.z_as_relative = true
 	
 	# Load and attach the dead body script
 	var dead_body_script = load("res://scripts/dead_body.gd")
@@ -1735,14 +1649,18 @@ func die():
 	dead_body.set_meta("is_player_body", true)
 	dead_body.set_meta("body_skin_color", Color(0.95, 0.8, 0.6))
 	
-	# Add the dead body to the world node so it renders with terrain
+	# Add the dead body to the corpse layer so it renders above the world.
 	if parent:
-		var world = get_world_node()
-		if world:
-			world.add_child(dead_body)
+		var corpse_layer = get_tree().get_root().find_child("CorpseLayer", true, false)
+		if corpse_layer:
+			corpse_layer.add_child(dead_body)
 		else:
-			# Fallback to parent if world not found
-			parent.add_child(dead_body)
+			var world = get_world_node()
+			if world:
+				world.add_child(dead_body)
+			else:
+				# Fallback to parent if world not found
+				parent.add_child(dead_body)
 	else:
 		# Avoid leaking if no parent is available
 		dead_body.queue_free()

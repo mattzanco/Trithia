@@ -2,6 +2,8 @@ extends "res://scripts/draggable_item.gd"
 
 # Visual representation of a dead orc with container functionality
 
+const SORT_OFFSET = 8
+
 var container_window: Control = null
 var container_slots: Array = []
 var container_items: Array = []
@@ -195,8 +197,11 @@ func create_container_window():
 		update_container_slot_visual(i)
 	
 	var ui_parent: Node = equip_menu
-	if equip_menu.get_parent() is CanvasLayer:
-		ui_parent = equip_menu.get_parent()
+	var current: Node = equip_menu
+	while current and not (current is CanvasLayer):
+		current = current.get_parent()
+	if current:
+		ui_parent = current
 	ui_parent.add_child(container_window)
 	container_window.visible = false
 	position_container_window()
@@ -409,6 +414,8 @@ func _exit_tree():
 		container_window = null
 
 func _draw():
+	# Shift the drawing up so the node can sort above the player without looking offset.
+	draw_set_transform(Vector2(0, -SORT_OFFSET), 0.0, Vector2.ONE)
 	# Draw a dead body lying sideways centered in tile
 	var dead_color = Color(0.6, 0.8, 0.6)  # Pale green (orc)
 	var outline_color = Color(0.3, 0.4, 0.3)  # Dark green outline (orc)

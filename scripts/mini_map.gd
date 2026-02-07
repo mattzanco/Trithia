@@ -34,6 +34,11 @@ func _ready():
 	var root = get_tree().get_root()
 	player = root.find_child("Player", true, false)
 	world = root.find_child("World", true, false)
+	if world != null:
+		if world.has_meta("discovered_tiles"):
+			discovered_tiles = world.get_meta("discovered_tiles")
+		else:
+			world.set_meta("discovered_tiles", discovered_tiles)
 	
 	# Calculate view radius based on viewport size and camera zoom
 	var viewport_size = get_viewport_rect().size

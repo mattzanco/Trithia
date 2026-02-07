@@ -4,12 +4,17 @@
 [ext_resource type="PackedScene" uid="uid://d7x3k8m2p4q1b" path="res://scenes/player/player.tscn" id="2_player"]
 [ext_resource type="Script" path="res://scripts/main.gd" id="3_main"]
 [ext_resource type="PackedScene" uid="uid://b5vqy8r3nxc8q" path="res://scenes/ui/mini_map.tscn" id="4_minimap"]
+[ext_resource type="PackedScene" path="res://scenes/ui/world_map.tscn" id="5_worldmap"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("3_main")
 
 [node name="World" parent="." instance=ExtResource("1_world")]
 
+[node name="CorpseLayer" type="Node2D" parent="."]
+
 [node name="Player" parent="." instance=ExtResource("2_player")]
 
 [node name="MiniMap" parent="." instance=ExtResource("4_minimap")]
+
+[node name="WorldMap" parent="." instance=ExtResource("5_worldmap")]

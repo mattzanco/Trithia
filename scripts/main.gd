@@ -268,7 +268,11 @@ func setup_y_sort():
 	ysort_container.name = "YSort"
 	ysort_container.y_sort_enabled = true
 	add_child(ysort_container)
-	move_child(ysort_container, 1)
+	var corpse_layer = get_node_or_null("CorpseLayer")
+	if corpse_layer:
+		move_child(ysort_container, 2)
+	else:
+		move_child(ysort_container, 1)
 	var player = get_node_or_null("Player")
 	if player:
 		player.reparent(ysort_container, true)
@@ -293,6 +297,14 @@ func _unhandled_input(event):
 		if event.keycode == KEY_QUOTELEFT:
 			if dev_console:
 				dev_console.toggle()
+			get_viewport().set_input_as_handled()
+		elif event.keycode == KEY_M:
+			var world_map = get_world_map_node()
+			if world_map:
+				if world_map.has_method("toggle"):
+					world_map.toggle()
+				else:
+					world_map.visible = not world_map.visible
 			get_viewport().set_input_as_handled()
 
 func _on_console_command(command: String):
@@ -354,6 +366,24 @@ func get_world_node() -> Node:
 	if found and found.has_method("get_available_spawn_points"):
 		return found
 	return direct
+
+func get_world_map_node() -> Node:
+	var direct = get_node_or_null("WorldMap")
+	if direct:
+		if direct.has_method("toggle"):
+			return direct
+		var child = direct.get_node_or_null("WorldMap")
+		if child:
+			return child
+	var root = get_tree().get_root()
+	var found = root.find_child("WorldMap", true, false)
+	if found:
+		if found.has_method("toggle"):
+			return found
+		var child_found = found.get_node_or_null("WorldMap")
+		if child_found:
+			return child_found
+	return null
 
 
 func show_game_over():
