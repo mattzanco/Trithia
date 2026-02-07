@@ -6,28 +6,24 @@ const TILE_SIZE = 32
 const ORC_SCENE = preload("res://scenes/enemies/orc.tscn")
 const TROLL_SCENE = preload("res://scenes/enemies/troll.tscn")
 const BUILDING_SCENE = preload("res://scenes/town/building.tscn")
+const DEV_CONSOLE_SCRIPT = preload("res://scripts/dev_console.gd")
 
 var ysort_container: Node2D = null
+var dev_console: CanvasLayer = null
 
 func _ready():
 	print("Trithia game started!")
 	print("Main node ready, about to wait for process frame")
 
 	setup_y_sort()
+	setup_dev_console()
 	
 	await get_tree().process_frame  # Wait one frame for player to be ready
 	print("About to call spawn_starting_orcs()")
 	
 	setup_towns()
-	spawn_starting_orcs()
-	print("spawn_starting_orcs() completed")
-	
-	# Start spawn timer for continuous spawning
-	var spawn_timer = Timer.new()
-	spawn_timer.wait_time = 10.0  # Spawn every 10 seconds
-	spawn_timer.timeout.connect(_on_spawn_timer_timeout)
-	add_child(spawn_timer)
-	spawn_timer.start()
+	# Enemy spawning disabled for now.
+	print("Enemy spawning disabled")
 
 func spawn_starting_orcs():
 	# Spawn 10 enemies at random spawn points around the world
@@ -256,12 +252,76 @@ func setup_y_sort():
 	if player:
 		player.reparent(ysort_container, true)
 
+func setup_dev_console():
+	if dev_console:
+		return
+	dev_console = CanvasLayer.new()
+	dev_console.set_script(DEV_CONSOLE_SCRIPT)
+	add_child(dev_console)
+	dev_console.command_submitted.connect(_on_console_command)
+
 func get_player_node() -> Node:
 	if ysort_container:
 		var player = ysort_container.get_node_or_null("Player")
 		if player:
 			return player
 	return get_tree().get_root().find_child("Player", true, false)
+
+func _unhandled_input(event):
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_QUOTELEFT:
+			if dev_console:
+				dev_console.toggle()
+			get_viewport().set_input_as_handled()
+
+func _on_console_command(command: String):
+	var tokens = command.to_lower().split(" ", false)
+	if tokens.is_empty():
+		return
+	if tokens[0] == "spawn" and tokens.size() >= 2:
+		var enemy_type = tokens[1]
+		if spawn_enemy_near_player(enemy_type):
+			dev_console.append_log("Spawned " + enemy_type)
+		else:
+			dev_console.append_log("Failed to spawn " + enemy_type)
+		return
+	dev_console.append_log("Unknown command: " + command)
+
+func spawn_enemy_near_player(enemy_type: String) -> bool:
+	var player = get_player_node()
+	var world = get_world_node()
+	if player == null or world == null:
+		return false
+	var scene = null
+	if enemy_type == "orc":
+		scene = ORC_SCENE
+	elif enemy_type == "troll":
+		scene = TROLL_SCENE
+	else:
+		return false
+	var player_tile = Vector2i(int(floor(player.position.x / TILE_SIZE)), int(floor(player.position.y / TILE_SIZE)))
+	var min_dist = 6
+	var max_dist = 12
+	# Dev-spawn ignores town restrictions.
+	for i in range(120):
+		var angle = randf() * TAU
+		var dist = randi_range(min_dist, max_dist)
+		var offset = Vector2(cos(angle), sin(angle)) * dist
+		var tile = Vector2i(player_tile.x + int(round(offset.x)), player_tile.y + int(round(offset.y)))
+		var spawn_pos = tile_to_world_center(tile)
+		if world.has_method("is_walkable"):
+			if not world.is_walkable(spawn_pos):
+				continue
+		if world.has_method("is_tile_occupied_by_other") and world.is_tile_occupied_by_other(spawn_pos, null):
+			continue
+		var enemy = scene.instantiate()
+		enemy.position = spawn_pos
+		if ysort_container:
+			ysort_container.add_child(enemy)
+		else:
+			add_child(enemy)
+		return true
+	return false
 
 
 func get_world_node() -> Node:

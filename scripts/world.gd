@@ -5,6 +5,7 @@ extends Node2D
 const TILE_SIZE = 32
 const CHUNK_SIZE = 16  # 16x16 tiles per chunk
 const RENDER_DISTANCE = 2  # How many chunks to render around player
+const CHUNK_UNLOAD_DISTANCE = 3  # Chunks beyond this distance are evicted
 const TOWN_RADIUS_TILES = 30
 const TOWN_SPACING_TILES = 600
 const TOWN_CELL_RADIUS = 2
@@ -15,8 +16,10 @@ const TOWN_CONNECT_COUNT = 2
 
 var generated_chunks = {}  # Dictionary to track which chunks have been generated
 var terrain_data = {}  # Dictionary to store terrain type at each tile position
+var chunk_tiles = {}  # Dictionary of chunk_pos -> Array of tile world positions
 var spawn_points = []  # Array of spawn point positions (world positions)
 var spawn_points_per_chunk = 2  # Number of spawn points to create per chunk
+var chunk_spawn_points = {}  # Dictionary of chunk_pos -> Array of spawn points
 var noise: FastNoiseLite
 var world_seed = 0
 var last_drawn_count = 0
@@ -27,6 +30,7 @@ var town_centers: Array = []
 var town_grid = {}
 var road_connections = {}
 var forced_terrain = {}
+var last_player_chunk = null
 
 # Water animation parameters
 var water_wave_speed = 3.0  # Speed of the wave
@@ -97,12 +101,15 @@ func _process(_delta):
 		queue_redraw()
 
 func update_world(player_position: Vector2):
-	ensure_towns_near(player_position)
 	# Calculate which chunk the player is in
 	var player_chunk = Vector2i(
 		floor(player_position.x / (CHUNK_SIZE * TILE_SIZE)),
 		floor(player_position.y / (CHUNK_SIZE * TILE_SIZE))
 	)
+	if last_player_chunk == player_chunk:
+		return
+	last_player_chunk = player_chunk
+	ensure_towns_near(player_position)
 	
 	# Generate chunks around the player
 	for x in range(player_chunk.x - RENDER_DISTANCE, player_chunk.x + RENDER_DISTANCE + 1):
@@ -110,12 +117,16 @@ func update_world(player_position: Vector2):
 			var chunk_pos = Vector2i(x, y)
 			if not generated_chunks.has(chunk_pos):
 				generate_chunk(chunk_pos)
+	
+	# Evict far chunks to keep memory bounded
+	unload_far_chunks(player_chunk)
 
 func generate_chunk(chunk_pos: Vector2i):
 	generated_chunks[chunk_pos] = true
 	
 	var start_x = chunk_pos.x * CHUNK_SIZE
 	var start_y = chunk_pos.y * CHUNK_SIZE
+	var tile_list: Array = []
 	
 	for x in range(CHUNK_SIZE):
 		for y in range(CHUNK_SIZE):
@@ -129,8 +140,9 @@ func generate_chunk(chunk_pos: Vector2i):
 			# Store terrain type for collision detection
 			var tile_world_pos = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
 			terrain_data[tile_world_pos] = terrain_type
+			tile_list.append(tile_world_pos)
 	
-	# Second pass: convert grass/dirt tiles adjacent to water into sand
+	# Second pass: convert some tiles adjacent to water into sand
 	for x in range(CHUNK_SIZE):
 		for y in range(CHUNK_SIZE):
 			var tile_x = start_x + x
@@ -140,26 +152,12 @@ func generate_chunk(chunk_pos: Vector2i):
 			if get_forced_terrain(Vector2i(tile_x, tile_y)) != "":
 				continue
 			if terrain_data[tile_world_pos] in ["grass", "dirt"]:
-				# Check if any adjacent tile is water
-				var is_next_to_water = false
-				for dx in [-1, 0, 1]:
-					for dy in [-1, 0, 1]:
-						if dx == 0 and dy == 0:
-							continue
-						var neighbor_x = tile_x + dx
-						var neighbor_y = tile_y + dy
-						# Check base terrain directly for neighbors (including those outside current chunk)
-						if get_base_terrain_type(neighbor_x, neighbor_y) == "water":
-							is_next_to_water = true
-							break
-					if is_next_to_water:
-						break
-				
-				if is_next_to_water:
+				if should_apply_sand(tile_x, tile_y):
 					terrain_data[tile_world_pos] = "sand"
 	
 	# Generate spawn points for this chunk
 	generate_spawn_points_for_chunk(chunk_pos)
+	chunk_tiles[chunk_pos] = tile_list
 	
 	# Trigger redraw when new terrain is generated
 	queue_redraw()
@@ -179,12 +177,48 @@ func get_terrain_type_from_noise(tile_x: int, tile_y: int) -> String:
 		return forced
 	return get_base_terrain_type(tile_x, tile_y)
 
+func get_render_terrain_type(tile_x: int, tile_y: int) -> String:
+	var forced = get_forced_terrain(Vector2i(tile_x, tile_y))
+	if forced != "":
+		return forced
+	var base = get_base_terrain_type(tile_x, tile_y)
+	if base == "water":
+		return base
+	# Match the sand pass used during chunk generation.
+	if should_apply_sand(tile_x, tile_y):
+		return "sand"
+	return base
+
+func should_apply_sand(tile_x: int, tile_y: int) -> bool:
+	# Only consider sand next to water, with a noisy chance for organic patches.
+	var has_water_neighbor = false
+	var water_neighbors = 0
+	for dx in [-1, 0, 1]:
+		for dy in [-1, 0, 1]:
+			if dx == 0 and dy == 0:
+				continue
+			if get_base_terrain_type(tile_x + dx, tile_y + dy) == "water":
+				has_water_neighbor = true
+				water_neighbors += 1
+	if not has_water_neighbor:
+		return false
+	# Use deterministic noise to create patchy sand near water.
+	var n = noise.get_noise_2d(float(tile_x) * 0.8 + 100.0, float(tile_y) * 0.8 - 100.0)
+	var threshold = -0.1 + float(water_neighbors) * 0.05
+	return n > threshold
+
 func generate_spawn_points_for_chunk(chunk_pos: Vector2i):
 	"""Generate spawn points within a chunk on walkable terrain"""
+	if chunk_spawn_points.has(chunk_pos):
+		var cached_points = chunk_spawn_points[chunk_pos]
+		for cached in cached_points:
+			spawn_points.append(cached)
+		return
 	var start_x = chunk_pos.x * CHUNK_SIZE
 	var start_y = chunk_pos.y * CHUNK_SIZE
 	var attempts = 0
 	var max_attempts = 50
+	var new_points: Array = []
 	
 	for i in range(spawn_points_per_chunk):
 		var spawn_found = false
@@ -209,9 +243,35 @@ func generate_spawn_points_for_chunk(chunk_pos: Vector2i):
 				
 				if not too_close:
 					spawn_points.append(spawn_pos)
+					new_points.append(spawn_pos)
 					spawn_found = true
 			
 			attempts += 1
+
+	chunk_spawn_points[chunk_pos] = new_points
+
+func unload_far_chunks(player_chunk: Vector2i):
+	var to_unload: Array = []
+	for chunk_pos in generated_chunks.keys():
+		var dx = abs(chunk_pos.x - player_chunk.x)
+		var dy = abs(chunk_pos.y - player_chunk.y)
+		if dx > CHUNK_UNLOAD_DISTANCE or dy > CHUNK_UNLOAD_DISTANCE:
+			to_unload.append(chunk_pos)
+	for chunk_pos in to_unload:
+		unload_chunk(chunk_pos)
+
+func unload_chunk(chunk_pos: Vector2i):
+	if chunk_tiles.has(chunk_pos):
+		var tiles = chunk_tiles[chunk_pos]
+		for tile_pos in tiles:
+			terrain_data.erase(tile_pos)
+		chunk_tiles.erase(chunk_pos)
+	if chunk_spawn_points.has(chunk_pos):
+		var points = chunk_spawn_points[chunk_pos]
+		for spawn_pos in points:
+			spawn_points.erase(spawn_pos)
+	# Allow regeneration when revisiting
+	generated_chunks.erase(chunk_pos)
 
 func is_spawn_point_visible(spawn_pos: Vector2, player_pos: Vector2, view_distance: float = 600.0) -> bool:
 	"""Check if a spawn point is visible to the player (within view distance)"""

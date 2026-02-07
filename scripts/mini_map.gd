@@ -22,6 +22,7 @@ var color_grass = Color(0.4, 0.6, 0.3)
 var color_dirt = Color(139.0/255.0, 90.0/255.0, 43.0/255.0)
 var color_sand = Color(194.0/255.0, 178.0/255.0, 128.0/255.0)
 var color_water = Color(0.2, 0.4, 0.7)
+var color_road = Color(0.55, 0.4, 0.2)
 var color_player = Color(1.0, 1.0, 0.0)  # Yellow
 var color_enemy = Color(1.0, 0.2, 0.2)  # Red
 var color_fog = Color(0.05, 0.05, 0.05)  # Nearly black for undiscovered
@@ -61,32 +62,7 @@ func _process(_delta):
 				
 				var tile_key = Vector2(tile_x, tile_y)
 				if not discovered_tiles.has(tile_key):
-					# Store terrain type when discovered
-					var terrain_type = "grass"
-					if world != null and world.has_method("get_terrain_type_from_noise"):
-						terrain_type = world.get_terrain_type_from_noise(tile_x, tile_y)
-					
-					# Check if this should be sand (adjacent to water)
-					if terrain_type in ["grass", "dirt"]:
-						var is_next_to_water = false
-						for nx in [-1, 0, 1]:
-							for ny in [-1, 0, 1]:
-								if nx == 0 and ny == 0:
-									continue
-								var neighbor_x = tile_x + nx
-								var neighbor_y = tile_y + ny
-								if world != null and world.has_method("get_terrain_type_from_noise"):
-									var neighbor_terrain = world.get_terrain_type_from_noise(neighbor_x, neighbor_y)
-									if neighbor_terrain == "water":
-										is_next_to_water = true
-										break
-							if is_next_to_water:
-								break
-						
-						if is_next_to_water:
-							terrain_type = "sand"
-					
-					discovered_tiles[tile_key] = terrain_type
+					discovered_tiles[tile_key] = true
 	
 	queue_redraw()
 
@@ -114,14 +90,21 @@ func _draw():
 			
 			# Check if tile has been discovered
 			if discovered_tiles.has(tile_key):
-				var terrain_type = discovered_tiles[tile_key]
+				# Use the world render terrain so minimap matches visible tiles.
+				var terrain_type = "grass"
+				if world != null and world.has_method("get_render_terrain_type"):
+					terrain_type = world.get_render_terrain_type(tile_x, tile_y)
+				elif world != null and world.has_method("get_terrain_type_from_noise"):
+					terrain_type = world.get_terrain_type_from_noise(tile_x, tile_y)
 				
-				# Choose color based on terrain
+				# Choose color based on terrain, with sand override near water.
 				var tile_color = color_grass
 				if terrain_type == "water":
 					tile_color = color_water
 				elif terrain_type == "dirt":
-					tile_color = color_dirt
+					tile_color = color_road
+				elif terrain_type == "grass":
+					tile_color = color_grass
 				elif terrain_type == "sand":
 					tile_color = color_sand
 				

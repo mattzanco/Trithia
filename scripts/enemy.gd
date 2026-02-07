@@ -97,11 +97,9 @@ func _ready():
 		return
 	
 	# Get reference to the player and world for collision detection
-	var parent = get_parent()
-	if parent:
-		player = parent.find_child("Player", true, false)
-		world = parent.find_child("World", true, false)
-	else:
+	player = get_player_node()
+	world = get_world_node()
+	if player == null or world == null:
 		return
 	
 	# Create animated sprite with walking animations
@@ -151,6 +149,22 @@ func _ready():
 	set_meta("dexterity", dexterity)
 	set_meta("speed", speed)
 	set_process_input(true)
+
+func get_player_node() -> Node:
+	var parent = get_parent()
+	if parent:
+		var player_node = parent.find_child("Player", true, false)
+		if player_node:
+			return player_node
+	return get_tree().get_root().find_child("Player", true, false)
+
+func get_world_node() -> Node:
+	var parent = get_parent()
+	if parent:
+		var world_node = parent.find_child("World", true, false)
+		if world_node:
+			return world_node
+	return get_tree().get_root().find_child("World", true, false)
 
 func _input(event):
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and event.shift_pressed:
