@@ -449,12 +449,14 @@ func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 	var inside_building = null
 	if is_enemy and requester.has_method("get_current_building"):
 		inside_building = requester.get_current_building()
+		if inside_building == null and requester.has_method("get_pathfinding_building"):
+			inside_building = requester.get_pathfinding_building()
 	var goal_feet = goal + feet_offset
 	var goal_tile_x = floor(goal_feet.x / TILE_SIZE)
 	var goal_tile_y = floor(goal_feet.y / TILE_SIZE)
 	var goal_tile_center = Vector2(goal_tile_x * TILE_SIZE + TILE_SIZE/2, goal_tile_y * TILE_SIZE + TILE_SIZE/2)
 	if is_enemy:
-		if not is_walkable_for_actor(goal_feet, start + feet_offset, inside_building, false, false):
+		if not is_walkable_for_actor(goal_feet, start + feet_offset, inside_building, false, true):
 			return []
 	else:
 		if not is_walkable_for_player(goal_tile_center, start):
@@ -495,7 +497,7 @@ func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 		open_set.erase(current)
 		closed_set[current] = true
 		
-		# Check all neighbors (8 directions)
+		# Check all neighbors (4 directions)
 		var neighbors = get_neighbors_world(current)
 		for neighbor in neighbors:
 			if neighbor in closed_set:
@@ -508,7 +510,7 @@ func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 			var tile_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
 			
 			if is_enemy:
-				if not is_walkable_for_actor(feet_position, current + feet_offset, inside_building, false, false):
+				if not is_walkable_for_actor(feet_position, current + feet_offset, inside_building, false, true):
 					continue
 			else:
 				if not is_walkable_for_player(tile_center, current):
@@ -547,14 +549,13 @@ func find_path(start: Vector2, goal: Vector2, requester: Node) -> Array:
 	return []
 
 func get_neighbors_world(tile_center: Vector2) -> Array:
-	"""Get all 8 neighboring tiles (world version for pathfinding)"""
+	"""Get the 4 neighboring tiles (cardinal only)"""
 	var neighbors = []
 	var tile_x = floor(tile_center.x / TILE_SIZE)
 	var tile_y = floor(tile_center.y / TILE_SIZE)
 	
 	var directions = [
-		Vector2(1, 0), Vector2(1, 1), Vector2(0, 1), Vector2(-1, 1),
-		Vector2(-1, 0), Vector2(-1, -1), Vector2(0, -1), Vector2(1, -1)
+		Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0), Vector2(0, -1)
 	]
 	
 	for dir in directions:
@@ -566,10 +567,10 @@ func get_neighbors_world(tile_center: Vector2) -> Array:
 	return neighbors
 
 func heuristic(a: Vector2, b: Vector2) -> float:
-	"""Heuristic for A* (Chebyshev distance for 8-directional movement)"""
+	"""Heuristic for A* (Manhattan distance for 4-directional movement)"""
 	var dx = abs(a.x - b.x) / TILE_SIZE
 	var dy = abs(a.y - b.y) / TILE_SIZE
-	return max(dx, dy) * TILE_SIZE
+	return (dx + dy) * TILE_SIZE
 
 func reconstruct_path(came_from: Dictionary, current: Vector2) -> Array:
 	"""Reconstruct the path from came_from map"""

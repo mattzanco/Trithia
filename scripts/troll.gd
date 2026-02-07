@@ -13,6 +13,7 @@ func configure_enemy():
 	attack_cooldown = 2.8
 	detection_range = 650.0
 	has_weapon = false
+	is_humanoid = true
 	
 	skin_color = Color(0.55, 0.4, 0.25)
 	dark_skin_color = Color(0.4, 0.28, 0.18)

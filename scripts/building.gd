@@ -144,6 +144,18 @@ func is_player_on_door_tile(player_node: Node) -> bool:
 func is_door_open() -> bool:
 	return door_open
 
+func open_door():
+	if door_open:
+		return
+	door_open = true
+	update_layers()
+
+func close_door():
+	if not door_open:
+		return
+	door_open = false
+	update_layers()
+
 func get_world_node() -> Node:
 	var parent = get_parent()
 	if parent:

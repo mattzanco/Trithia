@@ -1445,9 +1445,9 @@ func move_to_position(target: Vector2):
 		# Already at destination
 		return
 	elif path.size() == 0:
-		# No path found - try direct movement if adjacent
+		# No path found - try direct movement if adjacent (cardinal only)
 		var dist = current_tile_center.distance_to(target_tile_center)
-		if dist <= TILE_SIZE * 1.5:  # Adjacent tile (including diagonal)
+		if dist <= TILE_SIZE * 1.1:
 			path_queue.clear()  # Clear any previous path
 			path_queue = [target_tile_center]
 			process_next_path_step()
@@ -1477,7 +1477,7 @@ func process_next_path_step():
 		# SAFETY CHECK: Verify the next tile is actually adjacent to current position
 		# This prevents invalid grid-skipping movement when paths have gaps
 		var distance_to_tile = position.distance_to(next_tile)
-		var max_adjacent_distance = TILE_SIZE * 1.5  # Allows diagonal movement (sqrt(2) ≈ 1.41)
+		var max_adjacent_distance = TILE_SIZE * 1.1  # Cardinal adjacency only
 		
 		if distance_to_tile > max_adjacent_distance:
 			# The next tile is not adjacent - path is broken!
@@ -1533,33 +1533,11 @@ func process_next_path_step():
 		
 		# Only change facing if the direction actually changed
 		if direction_changed:
-			# Simple facing logic: face the direction of movement
-			# If moving diagonally, prefer the component that's not backwards
-			var facing_h = Vector2(dx, 0) if dx != 0 else Vector2.ZERO
-			var facing_v = Vector2(0, dy) if dy != 0 else Vector2.ZERO
-			
-			# Determine which direction to face based on movement
-			if facing_h != Vector2.ZERO and facing_v != Vector2.ZERO:
-				# Diagonal movement - pick the component that's not backwards
-				var h_is_backwards = (facing_h == -current_direction)
-				var v_is_backwards = (facing_v == -current_direction)
-				
-				if h_is_backwards and not v_is_backwards:
-					new_direction = facing_v
-				elif v_is_backwards and not h_is_backwards:
-					new_direction = facing_h
-				else:
-					# Both forward or both backward - prefer based on current facing
-					if current_direction.x != 0:
-						new_direction = facing_v
-					else:
-						new_direction = facing_h
-			elif facing_h != Vector2.ZERO:
-				# Pure horizontal movement
-				new_direction = facing_h
-			elif facing_v != Vector2.ZERO:
-				# Pure vertical movement
-				new_direction = facing_v
+			# Simple facing logic: face the direction of movement (cardinal only)
+			if dx != 0:
+				new_direction = Vector2(dx, 0)
+			elif dy != 0:
+				new_direction = Vector2(0, dy)
 		
 		current_direction = new_direction
 		last_path_direction = tile_offset
@@ -1572,7 +1550,7 @@ func _physics_process(delta):
 	# Check for keyboard input first - if any keyboard input, cancel pathfinding
 	var input_dir = Vector2.ZERO
 	
-	# Support diagonal movement with keyboard
+	# Cardinal-only movement with keyboard
 	if Input.is_action_pressed("move_right"):
 		input_dir.x += 1
 	if Input.is_action_pressed("move_left"):
@@ -1581,6 +1559,15 @@ func _physics_process(delta):
 		input_dir.y += 1
 	if Input.is_action_pressed("move_up"):
 		input_dir.y -= 1
+	
+	# Resolve diagonal input to a single cardinal direction
+	if input_dir.x != 0 and input_dir.y != 0:
+		if last_input_direction.x != 0 and sign(last_input_direction.x) == sign(input_dir.x):
+			input_dir.y = 0
+		elif last_input_direction.y != 0 and sign(last_input_direction.y) == sign(input_dir.y):
+			input_dir.x = 0
+		else:
+			input_dir.y = 0
 	
 	# If keyboard input detected, cancel click-to-move pathfinding
 	if input_dir != Vector2.ZERO:
@@ -1616,58 +1603,28 @@ func _physics_process(delta):
 		if input_dir != Vector2.ZERO:
 			# Check if Control is held - just change facing without moving
 			if Input.is_key_pressed(KEY_CTRL):
-				# Normalize for diagonal detection
-				input_dir = input_dir.normalized()
-				
-				# Update facing direction
-				if abs(input_dir.x) > abs(input_dir.y):
+				# Update facing direction (cardinal only)
+				if input_dir.x != 0:
 					current_direction = Vector2.RIGHT if input_dir.x > 0 else Vector2.LEFT
-				else:
+				elif input_dir.y != 0:
 					current_direction = Vector2.DOWN if input_dir.y > 0 else Vector2.UP
 				
 				# Update to idle animation in new direction
 				update_animation(current_direction, false)
 			else:
 				# Normal movement
-				# Calculate tile offset for diagonal detection
 				var tile_offset = Vector2(sign(input_dir.x), sign(input_dir.y))
 				
 				# Detect if input changed from last frame
 				var input_changed = (tile_offset != last_input_direction)
 				
-				var new_direction = current_direction
-				
 				# Only change facing if the input actually changed
 				if input_changed:
-					# Simple facing logic: face the direction of the input
-					# If pressing multiple keys, prefer the one that's not backwards
-					var facing_h = Vector2(tile_offset.x, 0) if tile_offset.x != 0 else Vector2.ZERO
-					var facing_v = Vector2(0, tile_offset.y) if tile_offset.y != 0 else Vector2.ZERO
-					
-					# Determine which direction to face based on input
-					if facing_h != Vector2.ZERO and facing_v != Vector2.ZERO:
-						# Diagonal input - pick the component that's not backwards
-						var h_is_backwards = (facing_h == -current_direction)
-						var v_is_backwards = (facing_v == -current_direction)
-						
-						if h_is_backwards and not v_is_backwards:
-							new_direction = facing_v
-						elif v_is_backwards and not h_is_backwards:
-							new_direction = facing_h
-						else:
-							# Both forward or both backward - prefer based on current facing
-							if current_direction.x != 0:
-								new_direction = facing_v
-							else:
-								new_direction = facing_h
-					elif facing_h != Vector2.ZERO:
-						# Pure horizontal input
-						new_direction = facing_h
-					elif facing_v != Vector2.ZERO:
-						# Pure vertical input
-						new_direction = facing_v
+					if tile_offset.x != 0:
+						current_direction = Vector2.RIGHT if tile_offset.x > 0 else Vector2.LEFT
+					elif tile_offset.y != 0:
+						current_direction = Vector2.DOWN if tile_offset.y > 0 else Vector2.UP
 				
-				current_direction = new_direction
 				last_input_direction = tile_offset
 				
 				# Calculate next tile position using integer offsets
@@ -1687,9 +1644,6 @@ func _physics_process(delta):
 					var tile_center = Vector2(tile_x * TILE_SIZE + TILE_SIZE/2, tile_y * TILE_SIZE + TILE_SIZE/2)
 					
 					can_move = world.is_walkable_for_player(tile_center, position) if world.has_method("is_walkable_for_player") else world.is_walkable(tile_center)
-					
-					# For diagonal movement, also check that at least one adjacent tile is walkable
-					# This prevents cutting corners through walls/water
 				
 				# Also check for entity collision
 				if can_move and is_position_occupied(next_position):
@@ -1700,7 +1654,6 @@ func _physics_process(delta):
 				
 				if can_move:
 					# Only update facing direction when movement is confirmed
-					current_direction = new_direction
 					target_position = next_position
 					is_moving = true
 	var world = get_parent().get_node_or_null("World")
