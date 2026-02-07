@@ -19,6 +19,14 @@ static func create_blood_effect(parent: Node, target_pos: Vector2, damage: int =
 	effect.damage_amount = damage
 	parent.add_child(effect)
 
+static func create_splash_effect(parent: Node, target_pos: Vector2):
+	"""Create a brief water splash effect"""
+	var effect = SplashEffect.new()
+	effect.position = target_pos
+	effect.z_index = 4096  # Maximum allowed z_index in Godot
+	effect.z_as_relative = false  # Absolute z-index, not relative to parent
+	parent.add_child(effect)
+
 class MissEffect extends Node2D:
 	var lifetime = 0.0
 	var max_lifetime = 0.5
@@ -91,3 +99,36 @@ class BloodEffect extends Node2D:
 			
 			# Draw text
 			draw_string(ThemeDB.fallback_font, damage_pos, str(damage_amount), HORIZONTAL_ALIGNMENT_CENTER, -1, 16, damage_color)
+
+class SplashEffect extends Node2D:
+	var lifetime = 0.0
+	var max_lifetime = 0.6
+	var particles = []
+
+	func _ready():
+		# Create splash droplets
+		for i in range(10):
+			var angle = randf_range(-PI * 0.2, -PI * 0.8)
+			var speed = randf_range(40, 90)
+			particles.append({
+				"pos": Vector2.ZERO,
+				"vel": Vector2(cos(angle), sin(angle)) * speed,
+				"size": randf_range(1.5, 3.5)
+			})
+
+	func _process(delta):
+		lifetime += delta
+		if lifetime >= max_lifetime:
+			queue_free()
+			return
+		for p in particles:
+			p.pos += p.vel * delta
+			p.vel.y += 120 * delta
+		queue_redraw()
+
+	func _draw():
+		var progress = lifetime / max_lifetime
+		var alpha = 1.0 - progress
+		var splash_color = Color(0.55, 0.75, 1.0, alpha)
+		for p in particles:
+			draw_circle(p.pos + Vector2(0, -8), p.size, splash_color)

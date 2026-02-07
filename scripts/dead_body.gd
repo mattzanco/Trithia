@@ -461,4 +461,36 @@ func _draw():
 	draw_circle(Vector2(5, 19), 1.5, blood_color)
 	draw_circle(Vector2(-5, 17), 1.5, blood_color)
 
+func finish_drop():
+	var snapped_position = snap_to_tile_center(global_position)
+	if is_on_water_tile(snapped_position):
+		var effects_parent = get_parent()
+		if effects_parent == null:
+			effects_parent = get_world_node()
+		if effects_parent:
+			var CombatEffects = load("res://scripts/combat_effects.gd")
+			CombatEffects.create_splash_effect(effects_parent, snapped_position)
+		if container_window and is_instance_valid(container_window):
+			container_window.queue_free()
+			container_window = null
+		queue_free()
+		return
+	if is_drop_valid(snapped_position):
+		global_position = snapped_position
+	else:
+		global_position = original_position
+
+func is_on_water_tile(world_position: Vector2) -> bool:
+	var world_node = world
+	if world_node == null:
+		world_node = get_world_node()
+	if world_node == null:
+		return false
+	if world_node.has_method("get_terrain_at"):
+		return world_node.get_terrain_at(world_position) == "water"
+	var tile = get_tile_coords(world_position)
+	if world_node.has_method("get_terrain_type_from_noise"):
+		return world_node.get_terrain_type_from_noise(tile.x, tile.y) == "water"
+	return false
+
 
