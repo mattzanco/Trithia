@@ -1,0 +1,56 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/chat_overlay.gd" id="1_chat_overlay"]
+
+[node name="ChatOverlay" type="CanvasLayer"]
+layer = 50
+script = ExtResource("1_chat_overlay")
+
+[node name="Panel" type="PanelContainer" parent="."]
+anchor_left = 0.1
+anchor_top = 0.6
+anchor_right = 0.9
+anchor_bottom = 0.95
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+
+[node name="VBox" type="VBoxContainer" parent="Panel"]
+anchors_preset = 15
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="NpcName" type="Label" parent="Panel/VBox"]
+text = "NPC"
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/VBox"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+scroll_horizontal_enabled = false
+
+[node name="History" type="RichTextLabel" parent="Panel/VBox/Scroll"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+bbcode_enabled = true
+scroll_following = true
+text = ""
+autowrap_mode = 3
+
+[node name="InputRow" type="HBoxContainer" parent="Panel/VBox"]
+size_flags_horizontal = 3
+
+[node name="Line" type="LineEdit" parent="Panel/VBox/InputRow"]
+size_flags_horizontal = 3
+placeholder_text = "Say something..."
+
+[node name="SendButton" type="Button" parent="Panel/VBox/InputRow"]
+text = "Send"
+
+[node name="CloseButton" type="Button" parent="Panel/VBox/InputRow"]
+text = "Close"

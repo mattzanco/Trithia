@@ -6,7 +6,19 @@ const TILE_SIZE = 32
 const ORC_SCENE = preload("res://scenes/enemies/orc.tscn")
 const TROLL_SCENE = preload("res://scenes/enemies/troll.tscn")
 const BUILDING_SCENE = preload("res://scenes/town/building.tscn")
+const NPC_SCENE = preload("res://scenes/npcs/npc.tscn")
 const DEV_CONSOLE_SCRIPT = preload("res://scripts/dev_console.gd")
+
+@export var llm_server_enabled := false
+@export var llm_server_exe := "res://llm/llama-server.exe"
+@export var llm_model_path := "res://llm/models/model.gguf"
+@export var llm_host := "127.0.0.1"
+@export var llm_port := 8080
+@export var llm_ctx_size := 2048
+@export var llm_threads := 6
+@export var llm_gpu_layers := 0
+
+var llm_pid := -1
 
 var ysort_container: Node2D = null
 var dev_console: CanvasLayer = null
@@ -14,6 +26,7 @@ var dev_console: CanvasLayer = null
 func _ready():
 	print("Trithia game started!")
 	print("Main node ready, about to wait for process frame")
+	start_llm_server()
 
 	setup_y_sort()
 	setup_dev_console()
@@ -24,6 +37,57 @@ func _ready():
 	setup_towns()
 	# Enemy spawning disabled for now.
 	print("Enemy spawning disabled")
+
+func _exit_tree():
+	stop_llm_server()
+
+func start_llm_server():
+	if not llm_server_enabled:
+		return
+	if is_llm_server_running():
+		print("LLM server already running on %s:%d" % [llm_host, llm_port])
+		return
+	var exe_path = ProjectSettings.globalize_path(llm_server_exe)
+	var model_path = ProjectSettings.globalize_path(llm_model_path)
+	if not FileAccess.file_exists(exe_path):
+		push_warning("LLM server exe not found: " + exe_path)
+		return
+	if not FileAccess.file_exists(model_path):
+		push_warning("LLM model not found: " + model_path)
+		return
+	var args = ["--model", model_path, "--host", llm_host, "--port", str(llm_port), "--ctx-size", str(llm_ctx_size), "--threads", str(llm_threads)]
+	if llm_gpu_layers > 0:
+		args.append("--gpu-layers")
+		args.append(str(llm_gpu_layers))
+	llm_pid = OS.create_process(exe_path, args)
+	if llm_pid <= 0:
+		push_warning("Failed to start LLM server process.")
+		llm_pid = -1
+		return
+	print("LLM server started (pid: %d)" % llm_pid)
+
+func is_llm_server_running() -> bool:
+	var peer := StreamPeerTCP.new()
+	var err = peer.connect_to_host(llm_host, llm_port)
+	if err != OK:
+		return false
+	for _i in range(10):
+		var status = peer.get_status()
+		if status == StreamPeerTCP.STATUS_CONNECTED:
+			peer.disconnect_from_host()
+			return true
+		if status == StreamPeerTCP.STATUS_ERROR:
+			return false
+		OS.delay_msec(50)
+	return false
+
+func stop_llm_server():
+	if llm_pid <= 0:
+		return
+	if OS.has_method("is_process_running") and OS.is_process_running(llm_pid):
+		if OS.has_method("kill"):
+			OS.kill(llm_pid)
+	llm_pid = -1
 
 func spawn_starting_orcs():
 	# Spawn 10 enemies at random spawn points around the world
@@ -92,8 +156,58 @@ func setup_towns():
 	player.position = spawn_pos
 	if world.has_method("update_world"):
 		world.update_world(player.position)
+	spawn_starting_npc(world, start_center, world.get_town_radius_world())
 	for town_center in town_centers:
 		spawn_town_buildings(world, town_center)
+
+func spawn_starting_npc(world: Node, town_center: Vector2, town_radius: float):
+	if NPC_SCENE == null:
+		return
+	var npc_pos = find_npc_spawn_near_player(world, town_center, town_radius)
+	if npc_pos == Vector2.ZERO:
+		npc_pos = get_random_town_position(world, town_center, town_radius)
+	if npc_pos == Vector2.ZERO:
+		npc_pos = town_center
+	var npc = NPC_SCENE.instantiate()
+	npc.position = npc_pos
+	if npc.has_method("set_talking"):
+		npc.town_center = town_center
+		npc.town_radius = town_radius
+	if ysort_container:
+		ysort_container.add_child(npc)
+	else:
+		add_child(npc)
+
+func find_npc_spawn_near_player(world: Node, town_center: Vector2, town_radius: float) -> Vector2:
+	var player = get_player_node()
+	if player == null:
+		return Vector2.ZERO
+	var directions = [Vector2.RIGHT, Vector2.LEFT, Vector2.DOWN, Vector2.UP]
+	var start = snap_to_tile_center(player.position)
+	for radius in range(1, 4):
+		for dir in directions:
+			var candidate = snap_to_tile_center(start + dir * TILE_SIZE * radius)
+			if town_center != Vector2.ZERO and candidate.distance_to(town_center) > town_radius:
+				continue
+			if world and world.has_method("is_walkable_for_player"):
+				if not world.is_walkable_for_player(candidate, player.position):
+					continue
+			elif world and world.has_method("is_walkable"):
+				if not world.is_walkable(candidate):
+					continue
+			if is_tile_occupied(candidate):
+				continue
+			return candidate
+	return Vector2.ZERO
+
+func is_tile_occupied(tile_center: Vector2) -> bool:
+	var parent = ysort_container if ysort_container else self
+	for child in parent.get_children():
+		if not (child is CharacterBody2D):
+			continue
+		if child.position.distance_to(tile_center) < TILE_SIZE:
+			return true
+	return false
 
 func spawn_town_buildings(world: Node, town_center: Vector2):
 	if world == null or not world.has_method("get_town_radius_world"):

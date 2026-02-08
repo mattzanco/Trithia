@@ -5,10 +5,14 @@ extends CharacterBody2D
 const TILE_SIZE = 32
 const MOVE_SPEED = 150.0  # Pixels per second
 const DRAGGABLE_SCRIPT = preload("res://scripts/draggable_item.gd")
+const CHAT_OVERLAY_SCENE = preload("res://scenes/ui/chat_overlay.tscn")
+const TALK_DISTANCE = TILE_SIZE * 1.5
 
 var is_moving = false
 var target_position = Vector2.ZERO
 var path_queue = []  # Queue of positions to move through
+var chat_overlay: CanvasLayer = null
+var chat_active = false
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 var current_direction = Vector2.DOWN  # Track current facing direction
@@ -1120,6 +1124,20 @@ func draw_character_side(img: Image, skin: Color, hair: Color, leather: Color, l
 					img.set_pixel(x, y, outline)
 
 func _unhandled_input(event):
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
+			ensure_chat_overlay()
+			if chat_overlay and chat_overlay.has_method("open_input"):
+				chat_overlay.open_input()
+				chat_active = true
+			get_viewport().set_input_as_handled()
+			return
+		if event.keycode == KEY_E:
+			toggle_chat_with_nearest()
+			get_viewport().set_input_as_handled()
+			return
+	if chat_active:
+		return
 	# Handle click-to-move
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -1139,6 +1157,68 @@ func _unhandled_input(event):
 		if event.keycode == KEY_H:
 			set_helmet_equipped(not has_helmet)
 			get_viewport().set_input_as_handled()
+
+func ensure_chat_overlay():
+	if chat_overlay:
+		return
+	chat_overlay = CHAT_OVERLAY_SCENE.instantiate()
+	var root_scene = get_tree().current_scene
+	if root_scene:
+		root_scene.add_child(chat_overlay)
+	else:
+		add_child(chat_overlay)
+	if chat_overlay.has_signal("conversation_closed"):
+		chat_overlay.conversation_closed.connect(_on_chat_overlay_closed)
+	if chat_overlay.has_signal("input_state_changed"):
+		chat_overlay.input_state_changed.connect(_on_chat_input_state_changed)
+
+func toggle_chat_with_nearest():
+	if chat_active:
+		if chat_overlay and chat_overlay.has_method("close"):
+			chat_overlay.close()
+		else:
+			chat_active = false
+		return
+	var npc = get_nearest_npc()
+	if npc == null:
+		DRAGGABLE_SCRIPT.show_center_text("No one nearby to talk.", self)
+		return
+	ensure_chat_overlay()
+	if chat_overlay and chat_overlay.has_method("start_conversation"):
+		chat_active = true
+		if npc.has_method("set_talking"):
+			npc.set_talking(true)
+		chat_overlay.start_conversation(npc)
+
+func _on_chat_overlay_closed(npc: Node):
+	chat_active = false
+	if npc and npc.has_method("set_talking"):
+		npc.set_talking(false)
+	if chat_overlay and chat_overlay.has_method("is_input_open"):
+		if chat_overlay.is_input_open():
+			chat_active = true
+
+func _on_chat_input_state_changed(active: bool):
+	if active:
+		chat_active = true
+		return
+	if chat_overlay and chat_overlay.has_method("is_conversation_active"):
+		if chat_overlay.is_conversation_active():
+			chat_active = true
+			return
+	chat_active = false
+
+func get_nearest_npc() -> Node:
+	var nearest = null
+	var nearest_dist = TALK_DISTANCE
+	for npc in get_tree().get_nodes_in_group("npcs"):
+		if npc == null:
+			continue
+		var dist = global_position.distance_to(npc.global_position)
+		if dist <= nearest_dist:
+			nearest = npc
+			nearest_dist = dist
+	return nearest
 
 func set_helmet_equipped(equipped: bool):
 	has_helmet = equipped
@@ -1455,6 +1535,17 @@ func process_next_path_step():
 		is_moving = true
 
 func _physics_process(delta):
+	if chat_active:
+		if is_moving:
+			is_moving = false
+		update_animation(current_direction, false)
+		var world = get_world_node()
+		if world and world.has_method("update_world"):
+			world.update_world(global_position)
+		var parent = get_parent()
+		if not (parent is Node2D and parent.y_sort_enabled):
+			z_index = clampi(int(position.y / 10) + 1000, 0, 10000)
+		return
 	# Check for keyboard input first - if any keyboard input, cancel pathfinding
 	var input_dir = Vector2.ZERO
 	
@@ -1595,10 +1686,10 @@ func is_position_occupied(target_position: Vector2) -> bool:
 	# Check against all enemies in the parent
 	var parent = get_parent()
 	if parent:
-		# Get all enemy children
+		# Get all blocking children (enemies + NPCs)
 		for child in parent.get_children():
-			# Check if this is an enemy
-			if child != self and child.is_in_group("enemies"):
+			# Check if this is a blocking actor
+			if child != self and (child.is_in_group("enemies") or child.is_in_group("npcs")):
 				var distance = target_position.distance_to(child.position)
 				# Prevent occupying same tile - use stricter collision
 				var is_colliding = distance < TILE_SIZE
@@ -1616,7 +1707,7 @@ func is_position_occupied_strict(target_position: Vector2) -> bool:
 	if parent:
 		# Get all enemy children
 		for child in parent.get_children():
-			if child != self and child.is_in_group("enemies"):
+			if child != self and (child.is_in_group("enemies") or child.is_in_group("npcs")):
 				var distance = target_position.distance_to(child.position)
 				# Only block if very close (same tile, with small tolerance)
 				var is_colliding = distance < 5.0

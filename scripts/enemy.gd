@@ -1650,10 +1650,10 @@ func is_tile_occupied_by_enemy(tile_pos: Vector2) -> bool:
 	if parent == null:
 		return false
 	
-	# Get all children of the parent that are enemies
+	# Get all children of the parent that are enemies or NPCs
 	for child in parent.get_children():
-		if child is CharacterBody2D and child != self and child.is_in_group("enemies"):
-			# This is another enemy - check if it's on this tile
+		if child is CharacterBody2D and child != self and (child.is_in_group("enemies") or child.is_in_group("npcs")):
+			# This is another actor - check if it's on this tile
 			if child.position.distance_to(tile_pos) < TILE_SIZE:
 				return true
 	
@@ -1665,7 +1665,7 @@ func is_tile_reserved_by_enemy(tile_pos: Vector2) -> bool:
 	if parent == null:
 		return false
 	for child in parent.get_children():
-		if child is CharacterBody2D and child != self and child.is_in_group("enemies"):
+		if child is CharacterBody2D and child != self and (child.is_in_group("enemies") or child.is_in_group("npcs")):
 			if not child.has_method("get"):
 				continue
 			var other_moving = bool(child.get("is_moving"))

@@ -20,3 +20,11 @@ Thumbs.db
 *~
 .vscode/
 .idea/
+
+# Local LLM assets (large binaries and runtime artifacts)
+llm/
+*.gguf
+*.ggml
+*.bin
+llama-server.exe
+*.log
