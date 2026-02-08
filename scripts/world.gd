@@ -13,6 +13,8 @@ const TOWN_OFFSET_TILES = 160
 const TOWN_CELL_CHANCE = 0.45
 const TOWN_ROAD_WIDTH = 2
 const TOWN_CONNECT_COUNT = 2
+const TOWN_NAME_PREFIXES = ["Stone", "Oak", "River", "Elder", "Grey", "High", "Low", "North", "South", "East", "West", "Bright", "Red", "Black", "Green", "Gold", "Iron", "Wind", "Ash", "Pine"]
+const TOWN_NAME_SUFFIXES = ["ford", "vale", "watch", "keep", "mere", "brook", "hollow", "ridge", "haven", "crest", "dale", "moor", "gate", "cross", "fall", "port", "hold", "field"]
 const TREE_TRUNK_SCRIPT = preload("res://scripts/tree_trunk.gd")
 const TREE_CANOPY_SCRIPT = preload("res://scripts/tree_canopy.gd")
 
@@ -34,6 +36,8 @@ var building_zones: Array = []
 var player_inside_building: Node = null
 var town_centers: Array = []
 var town_grid = {}
+var town_names: Array = []
+var town_name_grid = {}
 var road_connections = {}
 var forced_terrain = {}
 var last_player_chunk = null
@@ -488,11 +492,36 @@ func ensure_towns_near(player_position: Vector2):
 				continue
 			var center = get_town_center_for_cell(town_cell)
 			town_grid[town_cell] = center
+			_register_town_name(town_cell)
 			town_centers.append(center)
 			new_centers.append(center)
 			apply_town_clearing(center)
 	if not new_centers.is_empty():
 		connect_new_towns(new_centers)
+
+func _register_town_name(cell: Vector2i):
+	if town_name_grid.has(cell):
+		return
+	var base = _generate_town_name(cell)
+	var name = base
+	var suffix_index = 2
+	while town_names.has(name):
+		name = "%s %d" % [base, suffix_index]
+		suffix_index += 1
+	if name != "":
+		town_names.append(name)
+		town_name_grid[cell] = name
+
+func _generate_town_name(cell: Vector2i) -> String:
+	var prefix = TOWN_NAME_PREFIXES[hash_cell(cell, 71) % TOWN_NAME_PREFIXES.size()]
+	var suffix = TOWN_NAME_SUFFIXES[hash_cell(cell, 83) % TOWN_NAME_SUFFIXES.size()]
+	return "%s%s" % [prefix, suffix]
+
+func get_town_name_for_center(town_center: Vector2) -> String:
+	for cell in town_grid.keys():
+		if town_grid[cell] == town_center:
+			return town_name_grid.get(cell, "")
+	return ""
 
 func get_nearest_towns(center: Vector2, count: int) -> Array:
 	var candidates: Array = []

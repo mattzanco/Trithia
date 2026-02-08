@@ -173,6 +173,8 @@ func spawn_starting_npc(world: Node, town_center: Vector2, town_radius: float):
 	if npc.has_method("set_talking"):
 		npc.town_center = town_center
 		npc.town_radius = town_radius
+		if world and world.has_method("get_town_name_for_center"):
+			npc.town_name = world.get_town_name_for_center(town_center)
 	if ysort_container:
 		ysort_container.add_child(npc)
 	else:

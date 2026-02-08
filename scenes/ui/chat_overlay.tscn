@@ -1,20 +1,32 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/chat_overlay.gd" id="1_chat_overlay"]
+
+[sub_resource type="StyleBoxFlat" id="1_chat_panel"]
+bg_color = Color(0.08, 0.08, 0.1, 0.95)
+border_width_left = 0
+border_width_top = 0
+border_width_right = 0
+border_width_bottom = 0
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
 
 [node name="ChatOverlay" type="CanvasLayer"]
 layer = 50
 script = ExtResource("1_chat_overlay")
 
 [node name="Panel" type="PanelContainer" parent="."]
-anchor_left = 0.1
-anchor_top = 0.6
-anchor_right = 0.9
-anchor_bottom = 0.95
-offset_left = 0.0
-offset_top = 0.0
-offset_right = 0.0
-offset_bottom = 0.0
+anchor_left = 0.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 148.0
+offset_top = -180.0
+offset_right = -148.0
+offset_bottom = -8.0
+theme_override_styles/panel = SubResource("1_chat_panel")
 
 [node name="VBox" type="VBoxContainer" parent="Panel"]
 anchors_preset = 15

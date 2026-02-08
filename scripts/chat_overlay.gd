@@ -37,7 +37,7 @@ func _ready():
 	panel.visible = true
 	input_row.visible = false
 	input.editable = false
-	npc_name_label.text = "Chat"
+	npc_name_label.text = ""
 	http_request = HTTPRequest.new()
 	http_request.timeout = request_timeout_sec
 	add_child(http_request)
@@ -58,7 +58,7 @@ func _unhandled_input(event):
 			get_viewport().set_input_as_handled()
 			return
 
-func start_conversation(npc: Node):
+func start_conversation(npc: Node, show_greeting: bool = true):
 	active_npc = npc
 	conversation_messages.clear()
 	conversation_active = true
@@ -67,20 +67,23 @@ func start_conversation(npc: Node):
 	input.text = ""
 	open_input()
 	var profile = _get_npc_profile()
-	npc_name_label.text = profile["name"]
 	if active_npc and active_npc.has_method("set_talking"):
 		active_npc.set_talking(true)
-	if profile["greeting"] != "":
+		if active_npc.has_method("_face_player"):
+			active_npc._face_player()
+	if show_greeting and profile["greeting"] != "":
 		_append_line(profile["name"], profile["greeting"])
 		conversation_messages.append({"role": "assistant", "content": profile["greeting"]})
+		_show_npc_speech(profile["greeting"])
 
 func close():
 	var closed_npc = active_npc
 	active_npc = null
 	conversation_active = false
 	mode = ChatMode.GLOBAL
-	npc_name_label.text = "Chat"
 	close_input()
+	if closed_npc and closed_npc.has_method("set_thinking"):
+		closed_npc.set_thinking(false)
 	emit_signal("conversation_closed", closed_npc)
 
 func _on_close_pressed():
@@ -98,11 +101,13 @@ func _on_input_submitted(text: String):
 func _submit_line(text: String):
 	var trimmed = text.strip_edges()
 	if trimmed == "":
+		close_input()
 		return
+	_show_player_speech(trimmed)
 	if mode == ChatMode.GLOBAL:
 		var npc = _get_nearest_npc_for_auto_chat()
 		if npc != null:
-			start_conversation(npc)
+			start_conversation(npc, false)
 			_submit_npc_line(trimmed)
 			return
 		_append_line("You", trimmed)
@@ -118,11 +123,11 @@ func _submit_npc_line(trimmed: String):
 	_append_line("You", trimmed)
 	conversation_messages.append({"role": "user", "content": trimmed})
 	input.text = ""
-	input.editable = false
-	send_button.disabled = true
+	close_input()
 	_request_response(trimmed)
 
 func _request_response(_user_text: String):
+	_set_npc_thinking(true)
 	var profile = _get_npc_profile()
 	var payload = {
 		"model": model_name,
@@ -134,11 +139,13 @@ func _request_response(_user_text: String):
 	var headers = ["Content-Type: application/json"]
 	var err = http_request.request(llm_url, headers, HTTPClient.METHOD_POST, body)
 	if err != OK:
+		_set_npc_thinking(false)
 		_handle_llm_failure("I am not sure what to say right now.")
 
 func _on_request_completed(_result, response_code, _headers, body):
 	if not panel.visible or active_npc == null:
 		return
+	_set_npc_thinking(false)
 	input.editable = true
 	send_button.disabled = false
 	if response_code < 200 or response_code >= 300:
@@ -156,8 +163,10 @@ func _on_request_completed(_result, response_code, _headers, body):
 	var profile = _get_npc_profile()
 	_append_line(profile["name"], reply)
 	conversation_messages.append({"role": "assistant", "content": reply})
+	_show_npc_speech(reply)
 
 func _handle_llm_failure(fallback: String):
+	_set_npc_thinking(false)
 	input.editable = true
 	send_button.disabled = false
 	var profile = _get_npc_profile()
@@ -166,6 +175,7 @@ func _handle_llm_failure(fallback: String):
 		reply = _local_fallback_reply(profile, last_user_text)
 	_append_line(profile["name"], reply)
 	conversation_messages.append({"role": "assistant", "content": reply})
+	_show_npc_speech(reply)
 
 func _build_messages(profile: Dictionary) -> Array:
 	var messages: Array = []
@@ -179,7 +189,8 @@ func _build_messages(profile: Dictionary) -> Array:
 
 func _build_system_prompt(profile: Dictionary) -> String:
 	var memory_text = profile["memory"] if profile["memory"] != "" else "None."
-	return "You are %s, an NPC in the game Trithia. Persona: %s Memory: %s Speak in 1-3 sentences. Stay in-world. Do not mention being an AI, model, or external tools." % [profile["name"], profile["persona"], memory_text]
+	var town_text = profile["town_name"] if profile.has("town_name") and profile["town_name"] != "" else "the town"
+	return "You are %s, an NPC living in the country of Trithia. The local town is %s. Persona: %s Memory: %s Speak in 1-3 sentences. Stay in-world. Never call Trithia fictional or a game; it is real to you. Do not mention being an AI, model, or external tools." % [profile["name"], town_text, profile["persona"], memory_text]
 
 func _extract_reply(data: Dictionary) -> String:
 	if data.has("choices") and data.choices.size() > 0:
@@ -212,6 +223,21 @@ func _get_nearest_npc_for_auto_chat() -> Node:
 
 func _get_player_node() -> Node:
 	return get_tree().get_root().find_child("Player", true, false)
+
+func _show_player_speech(text: String):
+	var player = _get_player_node()
+	if player and player.has_method("show_speech"):
+		player.show_speech(text)
+
+func _show_npc_speech(text: String):
+	if active_npc and active_npc.has_method("show_speech"):
+		active_npc.show_speech(text)
+
+func _set_npc_thinking(active: bool):
+	if active_npc and active_npc.has_method("set_thinking"):
+		active_npc.set_thinking(active)
+		if active and active_npc.has_method("_face_player"):
+			active_npc._face_player()
 
 func open_input():
 	if input_open:
@@ -248,7 +274,7 @@ func is_input_open() -> bool:
 	return input_open
 
 func _get_npc_profile() -> Dictionary:
-	var profile = {"name": "NPC", "persona": "", "greeting": "", "memory": ""}
+	var profile = {"name": "NPC", "persona": "", "greeting": "", "memory": "", "town_name": ""}
 	if active_npc and active_npc.has_method("get_chat_profile"):
 		var npc_profile = active_npc.get_chat_profile()
 		if npc_profile.has("name"):
@@ -259,12 +285,19 @@ func _get_npc_profile() -> Dictionary:
 			profile["greeting"] = str(npc_profile["greeting"])
 		if npc_profile.has("memory"):
 			profile["memory"] = str(npc_profile["memory"])
+		if npc_profile.has("town_name"):
+			profile["town_name"] = str(npc_profile["town_name"])
 	return profile
 
 func _local_fallback_reply(profile: Dictionary, user_text: String) -> String:
 	var text = user_text.to_lower()
+	var town_name = profile["town_name"] if profile.has("town_name") and profile["town_name"] != "" else "the town"
+	if text.find("trithia") >= 0 or text.find("country") >= 0:
+		return "Trithia is the country. %s is a small town within it, mostly quiet and rural." % town_name
 	if text.find("village") >= 0 or text.find("town") >= 0 or text.find("place") >= 0 or text.find("where am i") >= 0:
-		return "People just call it the town. It is small, but safe enough if you keep to the roads."
+		return "Ah, this is the village of %s in the land of Trithia." % town_name
+	if text.find("tell me about") >= 0 or text.find("what is") >= 0 or text.find("what's") >= 0:
+		return "Trithia is a wide country with scattered towns like %s. Folks here value trade and safe roads." % town_name
 	if text.find("name") >= 0:
 		return "My name is %s." % profile["name"]
 	if text.find("who") >= 0 and text.find("you") >= 0:

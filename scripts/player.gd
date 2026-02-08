@@ -6,13 +6,68 @@ const TILE_SIZE = 32
 const MOVE_SPEED = 150.0  # Pixels per second
 const DRAGGABLE_SCRIPT = preload("res://scripts/draggable_item.gd")
 const CHAT_OVERLAY_SCENE = preload("res://scenes/ui/chat_overlay.tscn")
-const TALK_DISTANCE = TILE_SIZE * 1.5
+const TALK_DISTANCE = TILE_SIZE * 4.0
 
 var is_moving = false
 var target_position = Vector2.ZERO
 var path_queue = []  # Queue of positions to move through
 var chat_overlay: CanvasLayer = null
 var chat_active = false
+var speech_node: Node2D = null
+
+class SpeechText extends Node2D:
+	var text := ""
+	var lifetime := 0.0
+	var max_lifetime := 2.5
+	var font_size := 16
+	var outline_size := 2
+	var fade_out_time := 0.35
+	var max_width := 260.0
+
+	func _process(delta):
+		lifetime += delta
+		if lifetime >= max_lifetime:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw():
+		if text == "":
+			return
+		var font = ThemeDB.fallback_font
+		var viewport = get_viewport()
+		if viewport:
+			max_width = min(max_width, viewport.get_visible_rect().size.x * 0.45)
+		var alpha = 1.0
+		if lifetime > max_lifetime - fade_out_time:
+			alpha = clamp((max_lifetime - lifetime) / fade_out_time, 0.0, 1.0)
+		var lines = _wrap_lines(text, font, max_width, font_size)
+		var line_height = font.get_height(font_size) + 2
+		var total_height = line_height * lines.size()
+		var y = -total_height
+		for line in lines:
+			var line_size = font.get_string_size(line, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+			var draw_pos = Vector2(-line_size.x * 0.5, y)
+			for offset in [Vector2(-outline_size, -outline_size), Vector2(outline_size, -outline_size), Vector2(-outline_size, outline_size), Vector2(outline_size, outline_size)]:
+				draw_string(font, draw_pos + offset, line, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, Color(0, 0, 0, alpha))
+			draw_string(font, draw_pos, line, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, Color(1, 1, 1, alpha))
+			y += line_height
+
+	func _wrap_lines(raw_text: String, font: Font, width: float, size: int) -> Array:
+		var words = raw_text.split(" ", false)
+		var lines: Array = []
+		var current = ""
+		for word in words:
+			var candidate = word if current == "" else current + " " + word
+			var candidate_width = font.get_string_size(candidate, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+			if candidate_width <= width or current == "":
+				current = candidate
+				continue
+			lines.append(current)
+			current = word
+		if current != "":
+			lines.append(current)
+		return lines
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 var current_direction = Vector2.DOWN  # Track current facing direction
@@ -1194,19 +1249,26 @@ func _on_chat_overlay_closed(npc: Node):
 	chat_active = false
 	if npc and npc.has_method("set_talking"):
 		npc.set_talking(false)
-	if chat_overlay and chat_overlay.has_method("is_input_open"):
-		if chat_overlay.is_input_open():
-			chat_active = true
 
 func _on_chat_input_state_changed(active: bool):
-	if active:
-		chat_active = true
+	chat_active = active
+
+func show_speech(text: String, duration: float = 2.5):
+	var trimmed = text.strip_edges()
+	if trimmed == "":
 		return
-	if chat_overlay and chat_overlay.has_method("is_conversation_active"):
-		if chat_overlay.is_conversation_active():
-			chat_active = true
-			return
-	chat_active = false
+	if speech_node and is_instance_valid(speech_node):
+		speech_node.queue_free()
+		speech_node = null
+	var bubble = SpeechText.new()
+	bubble.text = trimmed
+	bubble.max_lifetime = duration
+	bubble.z_index = 4096
+	bubble.z_as_relative = false
+	var world_parent = get_parent() if get_parent() else self
+	world_parent.add_child(bubble)
+	bubble.global_position = global_position + Vector2(0, -56)
+	speech_node = bubble
 
 func get_nearest_npc() -> Node:
 	var nearest = null
@@ -1538,6 +1600,7 @@ func _physics_process(delta):
 	if chat_active:
 		if is_moving:
 			is_moving = false
+		_snap_to_tile_if_needed()
 		update_animation(current_direction, false)
 		var world = get_world_node()
 		if world and world.has_method("update_world"):
@@ -1655,6 +1718,8 @@ func _physics_process(delta):
 					# Only update facing direction when movement is confirmed
 					target_position = next_position
 					is_moving = true
+		else:
+			_snap_to_tile_if_needed()
 	var world = get_world_node()
 	if world and world.has_method("update_world"):
 		world.update_world(global_position)
@@ -1680,6 +1745,15 @@ func update_animation(direction: Vector2, walking: bool):
 	
 	if animated_sprite.animation != anim_name:
 		animated_sprite.play(anim_name)
+
+func _snap_to_tile_if_needed():
+	var snapped = Vector2(
+		floor(position.x / TILE_SIZE) * TILE_SIZE + TILE_SIZE / 2,
+		floor(position.y / TILE_SIZE) * TILE_SIZE + TILE_SIZE / 2
+	)
+	if position.distance_to(snapped) > 0.1:
+		position = snapped
+		target_position = snapped
 
 func is_position_occupied(target_position: Vector2) -> bool:
 	# Check if any entity occupies this position

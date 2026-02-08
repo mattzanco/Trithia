@@ -6,6 +6,8 @@ var character: Node2D = null
 var max_health = 100
 var current_health = 100
 
+@export var show_bar := true
+
 const BAR_WIDTH = 28
 const BAR_HEIGHT = 4
 const BAR_OFFSET_Y = -28
@@ -45,6 +47,10 @@ func _draw():
 		var font_size = 11  # Medium font size
 		# Display enemy name when attached to an enemy
 		var name_text = character.name
+		if character.is_in_group("npcs"):
+			var npc_name_value = character.get("npc_name")
+			if npc_name_value != null and str(npc_name_value) != "":
+				name_text = str(npc_name_value)
 		if character.is_in_group("enemies"):
 			var script = character.get_script()
 			if script and script.resource_path == "res://scripts/troll.gd":
@@ -67,23 +73,24 @@ func _draw():
 		# Draw white text on top
 		draw_string(font, Vector2(text_x, name_y), name_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
 	
-	# Draw black outline
-	var bar_pos = Vector2(-BAR_WIDTH / 2, BAR_OFFSET_Y)
-	var outline_width = 1
-	
-	# Draw outline rectangle (black border)
-	draw_line(bar_pos, bar_pos + Vector2(BAR_WIDTH, 0), Color.BLACK, outline_width)  # Top
-	draw_line(bar_pos + Vector2(BAR_WIDTH, 0), bar_pos + Vector2(BAR_WIDTH, BAR_HEIGHT), Color.BLACK, outline_width)  # Right
-	draw_line(bar_pos + Vector2(BAR_WIDTH, BAR_HEIGHT), bar_pos + Vector2(0, BAR_HEIGHT), Color.BLACK, outline_width)  # Bottom
-	draw_line(bar_pos, bar_pos + Vector2(0, BAR_HEIGHT), Color.BLACK, outline_width)  # Left
-	
-	# Draw red background bar
-	draw_rect(Rect2(bar_pos, Vector2(BAR_WIDTH, BAR_HEIGHT)), Color.RED)
-	
-	# Draw green health bar
-	var health_percentage = float(current_health) / float(max_health)
-	var health_width = BAR_WIDTH * health_percentage
-	draw_rect(Rect2(bar_pos, Vector2(health_width, BAR_HEIGHT)), Color.GREEN)
+	if show_bar:
+		# Draw black outline
+		var bar_pos = Vector2(-BAR_WIDTH / 2, BAR_OFFSET_Y)
+		var outline_width = 1
+		
+		# Draw outline rectangle (black border)
+		draw_line(bar_pos, bar_pos + Vector2(BAR_WIDTH, 0), Color.BLACK, outline_width)  # Top
+		draw_line(bar_pos + Vector2(BAR_WIDTH, 0), bar_pos + Vector2(BAR_WIDTH, BAR_HEIGHT), Color.BLACK, outline_width)  # Right
+		draw_line(bar_pos + Vector2(BAR_WIDTH, BAR_HEIGHT), bar_pos + Vector2(0, BAR_HEIGHT), Color.BLACK, outline_width)  # Bottom
+		draw_line(bar_pos, bar_pos + Vector2(0, BAR_HEIGHT), Color.BLACK, outline_width)  # Left
+		
+		# Draw red background bar
+		draw_rect(Rect2(bar_pos, Vector2(BAR_WIDTH, BAR_HEIGHT)), Color.RED)
+		
+		# Draw green health bar
+		var health_percentage = float(current_health) / float(max_health)
+		var health_width = BAR_WIDTH * health_percentage
+		draw_rect(Rect2(bar_pos, Vector2(health_width, BAR_HEIGHT)), Color.GREEN)
 
 func set_health(health: int):
 	current_health = health
